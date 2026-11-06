@@ -31,19 +31,24 @@ async function ask(system,prompt,schema,status,label,temp,tokens){
  const result=await model.chat.completions.create({messages:[{role:"system",content:system},{role:"user",content:prompt}],temperature:temp,max_tokens:tokens,response_format:{type:"json_object",schema:JSON.stringify(schema)}});
  return JSON.parse(result.choices[0].message.content);
 }
-export async function generateSpeech(dir,topic,target,status){
+const difficultyGuide={
+ Beginner:"Use familiar vocabulary and short sentences with one main fact each. Introduce at most one simple quantity per passage.",
+ Intermediate:"Mix everyday and topic-specific vocabulary. Link causes and effects, include comparisons, and use some dates and quantities.",
+ Advanced:"Use precise specialist terminology and nuanced arguments. Include conditions, concessions, and contrasting figures that require careful note-taking."
+};
+export async function generateSpeech(dir,topic,target,status,difficulty="Beginner"){
  const lang=dir==="en"?"English":"Simplified Mandarin Chinese", units=dir==="en"?"English words":"Chinese characters", length=Math.round(target*(dir==="en"?2.15:3.5));
  const schema=object({title:string,ideas:{type:"array",items:string}});
  const angle=["a public briefing","a community event","a pilot project","a workplace announcement","a student conference","a local survey"][crypto.getRandomValues(new Uint32Array(1))[0]%6];
  let correction="";
  for(let pass=0;pass<2;pass++){
  const result=await ask("Write original, fictional public speeches for consecutive interpreting. Write only in the requested language.",
- `Topic: ${topic}. Setting: ${angle}. Language: ${lang}. Target: ${length} ${units}. Write a short title and an array named ideas. Each entry is one substantive passage of the speech with one main idea. Together they form the entire spoken manuscript. Use about ${Math.max(4,Math.round(target/16))} entries. Include specific names, quantities and causal relationships. ${correction}`,schema,status,"Writing your speech…",0.8,Math.min(2800,length*2+350));
+ `Topic: ${topic}. Setting: ${angle}. Language: ${lang}. Target: ${length} ${units}. Write a short title and an array named ideas. Each entry is one substantive passage of the speech with one main idea. Together they form the entire spoken manuscript. Use about ${Math.max(4,Math.round(target/16))} entries. Difficulty: ${difficulty}. ${difficultyGuide[difficulty]} ${correction}`,schema,status,"Writing your speech…",0.8,Math.min(2800,length*2+350));
  if(!result.title?.trim()||!result.ideas?.length||result.ideas.some(s=>typeof s!=="string"||!s.trim())) continue;
  const source=result.ideas.join("\n\n");
  const count=dir==="en"?source.trim().split(/\s+/).length:(source.match(/[\u3400-\u9fff]/g)||[]).length;
  if(count<length*.76||count>length*1.24){correction=`The last draft was ${count} ${units}. Rewrite to reach ${length}.`;continue}
- return {dir,topic,target,title:result.title,ideas:result.ideas,source,mode:"AI-generated"};
+ return {dir,topic,target,difficulty,title:result.title,ideas:result.ideas,source,mode:"AI-generated"};
  }
  throw Error("The speech missed the selected duration target. Generate again to try a fresh draft.");
 }

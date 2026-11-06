@@ -58,15 +58,26 @@ function route(){
  if(route==="plan")planView();if(route==="history")historyView();dashboard();
 }
 window.addEventListener("hashchange",()=>{if(recorder && recorder.state!=="inactive")finishRecording();stopSpeech();route()});
-function showReport(r){$("report").innerHTML=`<small class="kicker">${r.fixture?"PREPARED CLASSROOM EXAMPLE":"SAVED PRACTICE"}</small><h2>${esc(r.title)}</h2><p class="meta">${esc(directionName(r.dir))} · ${esc(r.topic)}${r.date?" · "+esc(new Date(r.date).toLocaleString()):""}</p><div class="block"><div class="score">${r.score}%</div><b>${r.fixture?"Prepared meaning-accuracy example":"AI-estimated meaning accuracy"}</b><p>Accurate = 1 · Partial = ½ · Omitted or contradicted = 0</p></div><h3>Idea breakdown</h3>${r.rows.map((item,i)=>`<div class="verdict"><b>Idea ${i+1} · ${item.points}/1</b><p>${esc(item.source)}</p><p class="strong">${item.evidence?"“"+esc(item.evidence)+"”":"No matching passage"}</p><p>${esc(item.reason)}</p></div>`).join("")}<h3>Next exercise</h3><p>${esc(r.suggestion)}</p><details><summary>Manuscript and transcripts</summary><h3>Source manuscript</h3><p>${esc(r.source)}</p><h3>Original transcription</h3><p>${esc(r.original)||"Manually entered attempt"}</p><h3>Reviewed transcript</h3><p>${esc(r.transcript)}</p></details><p class="note">Target ${clock(r.target)} · Speech ${r.speechSeconds==null?"unmeasured":clock(r.speechSeconds)} · Recording ${r.recordSeconds==null?"—":clock(r.recordSeconds)}</p>`;$("detail").showModal()}
+function showReport(r){$("report").innerHTML=`<small class="kicker">${r.fixture?"PREPARED CLASSROOM EXAMPLE":"SAVED PRACTICE"}</small><h2>${esc(r.title)}</h2><p class="meta">${esc(directionName(r.dir))} · ${esc(r.topic)}${r.difficulty?" · "+esc(r.difficulty):""}${r.date?" · "+esc(new Date(r.date).toLocaleString()):""}</p><div class="block"><div class="score">${r.score}%</div><b>${r.fixture?"Prepared meaning-accuracy example":"AI-estimated meaning accuracy"}</b><p>Accurate = 1 · Partial = ½ · Omitted or contradicted = 0</p></div><h3>Idea breakdown</h3>${r.rows.map((item,i)=>`<div class="verdict"><b>Idea ${i+1} · ${item.points}/1</b><p>${esc(item.source)}</p><p class="strong">${item.evidence?"“"+esc(item.evidence)+"”":"No matching passage"}</p><p>${esc(item.reason)}</p></div>`).join("")}<h3>Next exercise</h3><p>${esc(r.suggestion)}</p><details><summary>Manuscript and transcripts</summary><h3>Source manuscript</h3><p>${esc(r.source)}</p><h3>Original transcription</h3><p>${esc(r.original)||"Manually entered attempt"}</p><h3>Reviewed transcript</h3><p>${esc(r.transcript)}</p></details><p class="note">Target ${clock(r.target)} · Speech ${r.speechSeconds==null?"unmeasured":clock(r.speechSeconds)} · Recording ${r.recordSeconds==null?"—":clock(r.recordSeconds)}</p>`;$("detail").showModal()}
 document.addEventListener("click",e=>{const id=e.target.closest("[data-id]")?.dataset.id;if(!id)return;const r=records.find(x=>x.id===id);if(r)showReport(r);else if(id.startsWith("example-")){const [,d,v]=id.split("-");showReport(example(d,v))}});
 document.querySelector(".close").onclick=()=>$("detail").close();
 function newSession(speech){
  attempt={...speech,id:crypto.randomUUID(),original:"",recordSeconds:0,listenSeconds:0,speechSeconds:null,blob:null,saved:false};
- $("session").hidden=false;$("session").innerHTML=`<small class="kicker">${esc(speech.mode.toUpperCase())}</small><h2>${esc(speech.title)}</h2><p class="meta">${esc(speech.topic)} · ${directionName(speech.dir)} · Target ${clock(speech.target)}</p><div class="block"><h3>1. Listen to the source</h3>${speech.mode==="Classroom demo"?`<audio id="sampleAudio" controls preload="metadata" src="./commute-${speech.dir}.wav"></audio>`:`<button id="sourcePlay">▶ Play speech</button>`}<p class="note" id="playtime"></p><details><summary>Reveal manuscript</summary><p>${esc(speech.source)}</p></details></div><div class="block sectionrule"><h3>2. Record your interpretation</h3><p class="note">Interpret into ${speech.dir==="en"?"Mandarin":"English"}. You can also enter your interpretation below.</p><div class="wrap block"><button id="record">● &nbsp; Start recording</button><button id="finishRecording" hidden>■ Finish recording</button><span id="rectime" class="note"></span></div><audio hidden id="replay" controls></audio><button id="retryASR" hidden>Retry transcription</button></div><div class="block sectionrule"><h3>3. Review and assess</h3><label for="corrected" class="field">Your reviewed transcript</label><textarea id="corrected" rows="5" placeholder="Your transcript appears here. You can correct recognition errors before assessment."></textarea><details id="originalBox" hidden><summary>Original transcription</summary><p id="originalText"></p></details><button class="action" id="evaluate">Assess and save attempt</button></div><div role="status" class="sessionstatus" id="sessionstatus"></div>`;
+ $("session").hidden=false;$("session").innerHTML=`<small class="kicker">${esc(speech.mode.toUpperCase())}</small><h2>${esc(speech.title)}</h2><p class="meta">${esc(speech.topic)}${speech.difficulty?" · "+esc(speech.difficulty):""} · ${directionName(speech.dir)} · Target ${clock(speech.target)}</p><div class="block"><h3>1. Listen to the source</h3>${speech.mode==="Classroom demo"?`<audio id="sampleAudio" controls preload="metadata" src="./commute-${speech.dir}.wav"></audio>`:`<button id="sourcePlay">▶ Play speech</button>`}<label class="speedControl">Playback speed <select id="playbackSpeed">${[0.75,1,1.25,1.5,2].map(rate=>`<option value="${rate}" ${rate===1?"selected":""}>${rate}×</option>`).join("")}</select></label><p class="note" id="playtime"></p><details><summary>Reveal manuscript</summary><p>${esc(speech.source)}</p></details></div><div class="block sectionrule"><h3>2. Record your interpretation</h3><p class="note">Interpret into ${speech.dir==="en"?"Mandarin":"English"}. You can also enter your interpretation below.</p><div class="wrap block"><button id="record">● &nbsp; Start recording</button><button id="finishRecording" hidden>■ Finish recording</button><span id="rectime" class="note"></span></div><audio hidden id="replay" controls></audio><button id="retryASR" hidden>Retry transcription</button></div><div class="block sectionrule"><h3>3. Review and assess</h3><label for="corrected" class="field">Your reviewed transcript</label><textarea id="corrected" rows="5" placeholder="Your transcript appears here. You can correct recognition errors before assessment."></textarea><details id="originalBox" hidden><summary>Original transcription</summary><p id="originalText"></p></details><button class="action" id="evaluate">Assess and save attempt</button></div><div role="status" class="sessionstatus" id="sessionstatus"></div>`;
+ $("playbackSpeed").onchange=()=>{
+  const audio=$("sampleAudio");
+  if(audio)audio.playbackRate=Number($("playbackSpeed").value);
+  else if(speechRun)status("Playback speed changes at the next sentence.");
+ };
  if($("sampleAudio")){
  const audio=$("sampleAudio");let start=null;const finish=()=>{if(start!==null){attempt.listenSeconds+=Math.max(0,(performance.now()-start)/1000);start=null}};
- audio.onloadedmetadata=()=>{if(Number.isFinite(audio.duration)){attempt.speechSeconds=audio.duration;$("playtime").textContent="Playback duration · "+clock(audio.duration)}};
+ audio.onratechange=()=>{
+  const select=$("playbackSpeed");
+  if(!Array.from(select.options).some(option=>Number(option.value)===audio.playbackRate))
+   select.add(new Option(audio.playbackRate+"×",audio.playbackRate));
+  select.value=String(audio.playbackRate);
+ };
+ audio.onloadedmetadata=()=>{if(Number.isFinite(audio.duration)){attempt.speechSeconds=audio.duration;$("playtime").textContent="Source duration · "+clock(audio.duration)}};
  audio.onplaying=()=>{if(start===null)start=performance.now()};audio.onpause=finish;audio.onended=finish;
  }else{$("sourcePlay").onclick=playGenerated;$("playtime").textContent="Playback duration is measured after a full listen."}
  if(speech.mode==="Classroom demo"){
@@ -79,7 +90,7 @@ function newSession(speech){
  $("session").scrollIntoView({behavior:"smooth",block:"start"});
 }
 $("demo").onclick=()=>{if(discard())newSession(demoSpeech(dir))};
-$("setup").onsubmit=async e=>{e.preventDefault();if(!discard())return;busyState(true);$("session").hidden=false;$("session").innerHTML='<h2>Preparing your speech</h2><p class="sessionstatus" role="status" id="sessionstatus"></p>';$("session").scrollIntoView({behavior:"smooth"});try{newSession(await generateSpeech(dir,topic,Number($("duration").value),status))}catch(err){status("Generation unavailable. "+err.message+" The classroom demo is available offline.")}finally{busyState(false)}};
+$("setup").onsubmit=async e=>{e.preventDefault();if(!discard())return;busyState(true);$("session").hidden=false;$("session").innerHTML='<h2>Preparing your speech</h2><p class="sessionstatus" role="status" id="sessionstatus"></p>';$("session").scrollIntoView({behavior:"smooth"});try{newSession(await generateSpeech(dir,topic,Number($("duration").value),status,$("difficulty").value))}catch(err){status("Generation unavailable. "+err.message+" The classroom demo is available offline.")}finally{busyState(false)}};
 function playGenerated(){
  if(!window.speechSynthesis)return status("Speech synthesis is unavailable in this browser. Use the manuscript or the recorded classroom demo.");
  if(speechRun){
@@ -92,19 +103,22 @@ function playGenerated(){
   return;
  }
  const session=attempt, lang=session.dir==="en"?"en":"zh";
+ const segmenter=typeof Intl.Segmenter==="function"?new Intl.Segmenter(lang,{granularity:"sentence"}):null;
+ const lines=segmenter?session.ideas.flatMap(idea=>Array.from(segmenter.segment(idea),part=>part.segment)):session.ideas;
  const run={session,timer:activeTimer(),paused:false,index:0,betweenLines:false};
  speechRun=run;
  run.next=()=>{
   if(speechRun!==run)return;
   run.betweenLines=run.paused;
   if(run.paused)return;
-  if(run.index===session.ideas.length){
+  if(run.index===lines.length){
    run.timer.pause();
    session.speechSeconds=run.timer.seconds();
    $("playtime").textContent="Playback duration · "+clock(session.speechSeconds);
    stopSpeech();return;
   }
-  const line=new SpeechSynthesisUtterance(session.ideas[run.index++]);
+  const line=new SpeechSynthesisUtterance(lines[run.index++]);
+  line.rate=Number($("playbackSpeed").value);
   line.lang=lang==="en"?"en-US":"zh-CN";
   line.voice=speechSynthesis.getVoices().find(v=>v.lang.toLowerCase().startsWith(lang))||null;
   line.onend=run.next;

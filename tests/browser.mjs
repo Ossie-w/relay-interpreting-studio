@@ -19,6 +19,8 @@ for(const dir of ["en","zh"]){
  await page.locator('[data-dir="'+dir+'"]').click();
  await page.locator("#demo").click();
  await page.waitForFunction(()=>document.querySelector("#sampleAudio").duration>0);
+ await page.locator("#playbackSpeed").selectOption("1.5");
+ assert.equal(await page.locator("#sampleAudio").evaluate(a=>a.playbackRate),1.5);
  console.log(dir+" demo seconds",await page.locator("#sampleAudio").evaluate(a=>a.duration));
  await page.locator("#record").click();
  await page.waitForFunction(()=>/microphone|device|denied|type your interpretation/i.test(document.querySelector("#sessionstatus").textContent));
@@ -49,20 +51,23 @@ await page.route("https://esm.run/@mlc-ai/web-llm@0.2.79",r=>r.fulfill({contentT
    await (await caches.open("qa-model")).put("/qa-model-file",new Response("fixture"));
   }
   options.initProgressCallback({text:"Loading model from cache",progress:1});
-  return {chat:{completions:{create:async()=>({choices:[{message:{content:JSON.stringify({title:"Test",ideas:["speech ".repeat(128)]})}}]})}}};
+  return {chat:{completions:{create:async(request)=>{window.testPrompt=request.messages.at(-1).content;return {choices:[{message:{content:JSON.stringify({title:"Test",ideas:["speech ".repeat(128)]})}}]}}}}};
  }`}));
 await page.goto(origin+"/#studio");
-for(const warm of [false,true,false]){
+for(const [warm,level] of [[false,"Beginner"],[true,"Intermediate"],[false,"Advanced"]]){
  await page.reload();
+ await page.locator("#difficulty").selectOption(level);
  if(!warm)await page.evaluate(()=>caches.delete("qa-model"));
  await page.locator("#generate").click();
  await page.waitForSelector("#corrected");
+ assert.ok((await page.evaluate(()=>window.testPrompt)).includes("Difficulty: "+level));
+ assert.ok((await page.locator("#session .meta").textContent()).includes(level));
  const messages=await page.evaluate(()=>statusMessages);
  assert.equal(messages.some(m=>m.includes("2 GB")),!warm);
 }
 // Replace the model boundary only in this browser test. Exercise the real UI and storage.
 await page.route("**/ai.js",r=>r.fulfill({contentType:"text/javascript",body:`
-export async function generateSpeech(dir,topic,target){return {dir,topic,target,title:"QA session",source:"Source passage",ideas:["Source passage"],mode:"AI-generated"}}
+export async function generateSpeech(dir,topic,target){return {dir,topic,target,title:"QA session",source:"Source passage",ideas:["First sentence. Second sentence."],mode:"AI-generated"}}
 export async function transcribe(){return "Recognized words"}
 export async function assess(s,t){return {score:100,rows:[{source:s.source,evidence:t,points:1,reason:"Test"}],suggestion:"Practice the number."}}`}));
 await page.goto(origin+"/#studio");await page.reload();
@@ -78,11 +83,17 @@ for(const [dir,target] of [["en",60],["zh",300]]){
    navigator.mediaDevices.getUserMedia=async()=>{await context.resume();return dest.stream};
    window.speechCalls=[];
    for(const method of ["speak","pause","resume","cancel"]){
-    Object.defineProperty(speechSynthesis,method,{value:()=>window.speechCalls.push(method)});
+    Object.defineProperty(speechSynthesis,method,{value:line=>{window.speechCalls.push(method);if(line)window.latestLine=line}});
    }
   });
   const speech=page.locator("#sourcePlay"),record=page.locator("#record");
-  await speech.click();await speech.click();assert.match(await speech.innerText(),/Resume/);
+  await page.locator("#playbackSpeed").selectOption("0.75");
+  await speech.click();
+  assert.equal(await page.evaluate(()=>latestLine.rate),0.75);
+  await page.locator("#playbackSpeed").selectOption("2");
+  await page.evaluate(()=>latestLine.onend());
+  assert.equal(await page.evaluate(()=>latestLine.rate),2);
+  await speech.click();assert.match(await speech.innerText(),/Resume/);
   await speech.click();await record.click();assert.match(await record.innerText(),/Pause/);
   assert.ok(await speech.isDisabled());
   await page.waitForTimeout(550);await record.click();
@@ -93,7 +104,7 @@ for(const [dir,target] of [["en",60],["zh",300]]){
   await page.locator("#finishRecording").click();
   await page.waitForFunction(()=>document.querySelector("#corrected").value==="Recognized words");
   assert.equal(await page.locator("#replay").isVisible(),true);
-  assert.equal(await page.evaluate(()=>speechCalls.filter(x=>x==="speak").length),1);
+  assert.equal(await page.evaluate(()=>speechCalls.filter(x=>x==="speak").length),2);
  }
  await page.locator("#corrected").fill("My reviewed transcript");
  await page.locator("#evaluate").click();await page.waitForSelector("#detail[open]");
