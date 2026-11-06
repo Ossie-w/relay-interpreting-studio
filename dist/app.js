@@ -3,12 +3,30 @@ import {generateSpeech,assess,transcribe} from "./ai.js";
 const $=id=>document.getElementById(id);
 function read(key,fallback){try{return JSON.parse(localStorage.getItem("relay-"+key))??fallback}catch{return fallback}}
 function write(key,value){localStorage.setItem("relay-"+key,JSON.stringify(value))}
-let plan=read("plan",defaultPlan),records=read("history",[]),dir=plan.direction,topic=plan.topics[0],attempt=null,recorder=null,takeURL="",busy=false,playing=false,talkId=0,noticeTimer;
+let plan=read("plan",defaultPlan),records=read("history",[]),dir=plan.direction,topic=plan.topics[0],attempt=null,recorder=null,takeURL="",busy=false,speechRun=null,recordTimer=null,noticeTimer;
 const today=()=>localDate(new Date());
 function notice(msg){$("notice").textContent=msg;clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>$("notice").textContent="",6500)}
 function status(s){const node=$("sessionstatus");if(node) node.textContent=s}
 function busyState(value){busy=value;for(const id of ["generate","demo","record","evaluate","retryASR","sourcePlay","finishSession"])if($(id))$(id).disabled=value;if($("corrected"))$("corrected").disabled=value;if($("sampleAudio"))$("sampleAudio").controls=!value;}
-function stopSpeech(){talkId++;playing=false;window.speechSynthesis?.cancel();$("sampleAudio")?.pause();if($("sourcePlay"))$("sourcePlay").textContent="▶ Play speech"}
+function activeTimer(){
+ let elapsed=0, since=null;
+ return {
+  start(){if(since===null)since=performance.now()},
+  pause(){if(since!==null){elapsed+=performance.now()-since;since=null}},
+  seconds(){return (elapsed+(since===null?0:performance.now()-since))/1000}
+ };
+}
+function pauseSource(){
+ $("sampleAudio")?.pause();
+ if(!speechRun||speechRun.paused)return;
+ speechRun.paused=true;
+ speechRun.timer.pause();
+ speechSynthesis.pause();
+ $("sourcePlay").textContent="▶ Resume speech";
+}
+function stopSpeech(){
+ if(speechRun){speechRun.timer.pause();speechRun.session.listenSeconds+=speechRun.timer.seconds();speechRun=null;window.speechSynthesis?.cancel()}
+ $("sampleAudio")?.pause();if($("sourcePlay"))$("sourcePlay").textContent="▶ Play speech"}
 function discard(){if(recorder?.state==="recording"||busy){notice("Finish the current operation first.");return false}
  if(attempt&&!attempt.saved&&(attempt.blob||$("corrected")?.value.trim())&&!confirm("Start a new session and discard the unsaved attempt?"))return false;
  stopSpeech();if(takeURL)URL.revokeObjectURL(takeURL);takeURL="";attempt=null;return true;}
@@ -39,13 +57,13 @@ function route(){
  $("title").textContent={studio:"Practice studio",plan:"Training plan",history:"Practice history"}[route];
  if(route==="plan")planView();if(route==="history")historyView();dashboard();
 }
-window.addEventListener("hashchange",()=>{if(recorder?.state==="recording")recorder.stop();stopSpeech();route()});
+window.addEventListener("hashchange",()=>{if(recorder && recorder.state!=="inactive")finishRecording();stopSpeech();route()});
 function showReport(r){$("report").innerHTML=`<small class="kicker">${r.fixture?"PREPARED CLASSROOM EXAMPLE":"SAVED PRACTICE"}</small><h2>${esc(r.title)}</h2><p class="meta">${esc(directionName(r.dir))} · ${esc(r.topic)}${r.date?" · "+esc(new Date(r.date).toLocaleString()):""}</p><div class="block"><div class="score">${r.score}%</div><b>${r.fixture?"Prepared meaning-accuracy example":"AI-estimated meaning accuracy"}</b><p>Accurate = 1 · Partial = ½ · Omitted or contradicted = 0</p></div><h3>Idea breakdown</h3>${r.rows.map((item,i)=>`<div class="verdict"><b>Idea ${i+1} · ${item.points}/1</b><p>${esc(item.source)}</p><p class="strong">${item.evidence?"“"+esc(item.evidence)+"”":"No matching passage"}</p><p>${esc(item.reason)}</p></div>`).join("")}<h3>Next exercise</h3><p>${esc(r.suggestion)}</p><details><summary>Manuscript and transcripts</summary><h3>Source manuscript</h3><p>${esc(r.source)}</p><h3>Original transcription</h3><p>${esc(r.original)||"Manually entered attempt"}</p><h3>Reviewed transcript</h3><p>${esc(r.transcript)}</p></details><p class="note">Target ${clock(r.target)} · Speech ${r.speechSeconds==null?"unmeasured":clock(r.speechSeconds)} · Recording ${r.recordSeconds==null?"—":clock(r.recordSeconds)}</p>`;$("detail").showModal()}
 document.addEventListener("click",e=>{const id=e.target.closest("[data-id]")?.dataset.id;if(!id)return;const r=records.find(x=>x.id===id);if(r)showReport(r);else if(id.startsWith("example-")){const [,d,v]=id.split("-");showReport(example(d,v))}});
 document.querySelector(".close").onclick=()=>$("detail").close();
 function newSession(speech){
  attempt={...speech,id:crypto.randomUUID(),original:"",recordSeconds:0,listenSeconds:0,speechSeconds:null,blob:null,saved:false};
- $("session").hidden=false;$("session").innerHTML=`<small class="kicker">${esc(speech.mode.toUpperCase())}</small><h2>${esc(speech.title)}</h2><p class="meta">${esc(speech.topic)} · ${directionName(speech.dir)} · Target ${clock(speech.target)}</p><div class="block"><h3>1. Listen to the source</h3>${speech.mode==="Classroom demo"?`<audio id="sampleAudio" controls preload="metadata" src="./commute-${speech.dir}.wav"></audio>`:`<button id="sourcePlay">▶ Play speech</button>`}<p class="note" id="playtime"></p><details><summary>Reveal manuscript</summary><p>${esc(speech.source)}</p></details></div><div class="block sectionrule"><h3>2. Record your interpretation</h3><p class="note">Interpret into ${speech.dir==="en"?"Mandarin":"English"}. You can also enter your interpretation below.</p><div class="wrap block"><button id="record">● &nbsp; Start recording</button><span id="rectime" class="note"></span></div><audio hidden id="replay" controls></audio><button id="retryASR" hidden>Retry transcription</button></div><div class="block sectionrule"><h3>3. Review and assess</h3><label for="corrected" class="field">Your reviewed transcript</label><textarea id="corrected" rows="5" placeholder="Your transcript appears here. You can correct recognition errors before assessment."></textarea><details id="originalBox" hidden><summary>Original transcription</summary><p id="originalText"></p></details><button class="action" id="evaluate">Assess and save attempt</button></div><div role="status" class="sessionstatus" id="sessionstatus"></div>`;
+ $("session").hidden=false;$("session").innerHTML=`<small class="kicker">${esc(speech.mode.toUpperCase())}</small><h2>${esc(speech.title)}</h2><p class="meta">${esc(speech.topic)} · ${directionName(speech.dir)} · Target ${clock(speech.target)}</p><div class="block"><h3>1. Listen to the source</h3>${speech.mode==="Classroom demo"?`<audio id="sampleAudio" controls preload="metadata" src="./commute-${speech.dir}.wav"></audio>`:`<button id="sourcePlay">▶ Play speech</button>`}<p class="note" id="playtime"></p><details><summary>Reveal manuscript</summary><p>${esc(speech.source)}</p></details></div><div class="block sectionrule"><h3>2. Record your interpretation</h3><p class="note">Interpret into ${speech.dir==="en"?"Mandarin":"English"}. You can also enter your interpretation below.</p><div class="wrap block"><button id="record">● &nbsp; Start recording</button><button id="finishRecording" hidden>■ Finish recording</button><span id="rectime" class="note"></span></div><audio hidden id="replay" controls></audio><button id="retryASR" hidden>Retry transcription</button></div><div class="block sectionrule"><h3>3. Review and assess</h3><label for="corrected" class="field">Your reviewed transcript</label><textarea id="corrected" rows="5" placeholder="Your transcript appears here. You can correct recognition errors before assessment."></textarea><details id="originalBox" hidden><summary>Original transcription</summary><p id="originalText"></p></details><button class="action" id="evaluate">Assess and save attempt</button></div><div role="status" class="sessionstatus" id="sessionstatus"></div>`;
  if($("sampleAudio")){
  const audio=$("sampleAudio");let start=null;const finish=()=>{if(start!==null){attempt.listenSeconds+=Math.max(0,(performance.now()-start)/1000);start=null}};
  audio.onloadedmetadata=()=>{if(Number.isFinite(audio.duration)){attempt.speechSeconds=audio.duration;$("playtime").textContent="Playback duration · "+clock(audio.duration)}};
@@ -57,29 +75,91 @@ function newSession(speech){
  panel.onclick=e=>{const variant=e.target.dataset.prepared;if(variant)showReport(example(speech.dir,variant))};
  $("session").append(panel);
  }
- $("record").onclick=record;$("retryASR").onclick=()=>recognizeTake();$("evaluate").onclick=evaluate;
+ $("finishRecording").onclick=finishRecording;$("record").onclick=record;$("retryASR").onclick=()=>recognizeTake();$("evaluate").onclick=evaluate;
  $("session").scrollIntoView({behavior:"smooth",block:"start"});
 }
 $("demo").onclick=()=>{if(discard())newSession(demoSpeech(dir))};
 $("setup").onsubmit=async e=>{e.preventDefault();if(!discard())return;busyState(true);$("session").hidden=false;$("session").innerHTML='<h2>Preparing your speech</h2><p class="sessionstatus" role="status" id="sessionstatus"></p>';$("session").scrollIntoView({behavior:"smooth"});try{newSession(await generateSpeech(dir,topic,Number($("duration").value),status))}catch(err){status("Generation unavailable. "+err.message+" The classroom demo is available offline.")}finally{busyState(false)}};
 function playGenerated(){
- if(playing){stopSpeech();return}
  if(!window.speechSynthesis)return status("Speech synthesis is unavailable in this browser. Use the manuscript or the recorded classroom demo.");
- const id=++talkId;playing=true;$("sourcePlay").textContent="■ Stop playback";const start=performance.now();let index=0;const lang=attempt.dir==="en"?"en":"zh";
- function next(){if(id!==talkId)return;if(index===attempt.ideas.length){const elapsed=(performance.now()-start)/1000;attempt.speechSeconds=elapsed;attempt.listenSeconds+=elapsed;$("playtime").textContent="Playback duration · "+clock(elapsed);stopSpeech();return}
- const line=new SpeechSynthesisUtterance(attempt.ideas[index++]);line.lang=lang==="en"?"en-US":"zh-CN";line.voice=speechSynthesis.getVoices().find(v=>v.lang.toLowerCase().startsWith(lang))||null;line.onend=next;line.onerror=e=>{if(id===talkId){stopSpeech();status("Playback failed ("+e.error+"). Check the installed language voice or use the classroom demo.")}};speechSynthesis.speak(line)}next();
+ if(speechRun){
+  if(!speechRun.paused){pauseSource();return}
+  speechRun.paused=false;
+  speechRun.timer.start();
+  $("sourcePlay").textContent="Ⅱ Pause speech";
+  speechSynthesis.resume();
+  if(speechRun.betweenLines)speechRun.next();
+  return;
+ }
+ const session=attempt, lang=session.dir==="en"?"en":"zh";
+ const run={session,timer:activeTimer(),paused:false,index:0,betweenLines:false};
+ speechRun=run;
+ run.next=()=>{
+  if(speechRun!==run)return;
+  run.betweenLines=run.paused;
+  if(run.paused)return;
+  if(run.index===session.ideas.length){
+   run.timer.pause();
+   session.speechSeconds=run.timer.seconds();
+   $("playtime").textContent="Playback duration · "+clock(session.speechSeconds);
+   stopSpeech();return;
+  }
+  const line=new SpeechSynthesisUtterance(session.ideas[run.index++]);
+  line.lang=lang==="en"?"en-US":"zh-CN";
+  line.voice=speechSynthesis.getVoices().find(v=>v.lang.toLowerCase().startsWith(lang))||null;
+  line.onend=run.next;
+  line.onerror=e=>{if(speechRun===run){stopSpeech();status("Playback failed ("+e.error+"). Check the installed voice or use the classroom demo.")}};
+  speechSynthesis.speak(line);
+ };
+ speechSynthesis.resume();
+ $("sourcePlay").textContent="Ⅱ Pause speech";
+ run.timer.start();run.next();
+}
+function recordingControls(){
+ const paused=recorder.state==="paused";
+ $("record").disabled=false;
+ $("record").textContent=paused?"● Resume recording":"Ⅱ Pause recording";
+ $("finishRecording").hidden=false;
+ if($("sourcePlay"))$("sourcePlay").disabled=!paused;
+ if($("sampleAudio"))$("sampleAudio").controls=paused;
+ status(paused?"Recording paused. Listen to the next passage, then resume recording.":"Recording your interpretation…");
+}
+function finishRecording(){
+ if(!recorder||recorder.state==="inactive")return;
+ recordTimer.pause();
+ pauseSource();
+ $("record").disabled=true;
+ $("finishRecording").hidden=true;
+ recorder.stop();
 }
 async function record(){
- if(recorder?.state==="recording"){recorder.stop();return}
- if(busy||attempt.saved)return;if(attempt.blob&&!confirm("Replace this recording and its transcript?"))return;
- stopSpeech();busyState(true);let stream;
+ if(recorder?.state==="recording"){
+  recorder.pause();recordTimer.pause();recordingControls();return;
+ }
+ if(recorder?.state==="paused"){
+  pauseSource();recorder.resume();recordTimer.start();recordingControls();return;
+ }
+ if(busy||attempt.saved)return;
+ if(attempt.blob&&!confirm("Replace this recording and its transcript?"))return;
+ pauseSource();busyState(true);let stream;
  try{
- if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder)throw Error("Recording requires a microphone and a browser on HTTPS or localhost.");
- stream=await navigator.mediaDevices.getUserMedia({audio:true});recorder=new MediaRecorder(stream);const chunks=[],started=performance.now();
- recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
- const timer=setInterval(()=>{$("rectime").textContent=clock((performance.now()-started)/1000)},250);
- recorder.onstop=async()=>{clearInterval(timer);stream.getTracks().forEach(t=>t.stop());attempt.recordSeconds=(performance.now()-started)/1000;attempt.blob=new Blob(chunks,{type:recorder.mimeType});attempt.original="";$("corrected").value="";$("originalBox").hidden=true;if(takeURL)URL.revokeObjectURL(takeURL);takeURL=URL.createObjectURL(attempt.blob);$("replay").src=takeURL;$("replay").hidden=false;$("record").textContent="● Record again";$("rectime").textContent=clock(attempt.recordSeconds);await recognizeTake()};
- recorder.start(500);$("record").disabled=false;$("record").textContent="■ Stop recording";status("Recording your interpretation…");
+  if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder)throw Error("Recording requires a microphone and a browser on HTTPS or localhost.");
+  stream=await navigator.mediaDevices.getUserMedia({audio:true});
+  const take=new MediaRecorder(stream),chunks=[],timer=activeTimer();
+  take.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
+  take.start(500);
+  recorder=take;recordTimer=timer;timer.start();recordingControls();
+  const ticker=setInterval(()=>{$("rectime").textContent=clock(timer.seconds())},250);
+  take.onstop=async()=>{
+   clearInterval(ticker);timer.pause();stream.getTracks().forEach(t=>t.stop());
+   recorder=null;recordTimer=null;$("finishRecording").hidden=true;
+   attempt.recordSeconds=timer.seconds();attempt.blob=new Blob(chunks,{type:take.mimeType});
+   attempt.original="";$("corrected").value="";$("originalBox").hidden=true;
+   if(takeURL)URL.revokeObjectURL(takeURL);
+   takeURL=URL.createObjectURL(attempt.blob);$("replay").src=takeURL;$("replay").hidden=false;
+   $("record").textContent="● Record again";$("rectime").textContent=clock(attempt.recordSeconds);
+   await recognizeTake();
+  };
  }catch(e){stream?.getTracks().forEach(t=>t.stop());busyState(false);status(e.name==="NotAllowedError"?"Microphone access was denied. Allow it in browser settings or type your interpretation below.":e.message+" You can type your interpretation below.")}
 }
 async function recognizeTake(){busyState(true);try{const text=await transcribe(attempt.blob,attempt.dir,status);if(!text)throw Error("No speech detected.");attempt.original=text;$("corrected").value=text;$("originalText").textContent=text;$("originalBox").hidden=false;$("retryASR").hidden=true;status("Check the transcript before assessment.")}

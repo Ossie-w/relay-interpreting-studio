@@ -43,6 +43,31 @@ for(const [dir,target] of [["en",60],["zh",300]]){
  await page.locator('[data-dir="'+dir+'"]').click();
  await page.locator("#duration").press(target===300?"End":"Home");
  await page.locator("#generate").click();
+ if(dir==="en"){
+  // Drive a real MediaRecorder with a synthetic microphone. Headless Edge has no speaking voice.
+  await page.evaluate(()=>{
+   const context=new AudioContext(),osc=context.createOscillator(),dest=context.createMediaStreamDestination();
+   osc.connect(dest);osc.start();
+   navigator.mediaDevices.getUserMedia=async()=>{await context.resume();return dest.stream};
+   window.speechCalls=[];
+   for(const method of ["speak","pause","resume","cancel"]){
+    Object.defineProperty(speechSynthesis,method,{value:()=>window.speechCalls.push(method)});
+   }
+  });
+  const speech=page.locator("#sourcePlay"),record=page.locator("#record");
+  await speech.click();await speech.click();assert.match(await speech.innerText(),/Resume/);
+  await speech.click();await record.click();assert.match(await record.innerText(),/Pause/);
+  assert.ok(await speech.isDisabled());
+  await page.waitForTimeout(550);await record.click();
+  assert.match(await record.innerText(),/Resume/);assert.ok(await speech.isEnabled());
+  await speech.click();await page.waitForTimeout(1200);
+  await record.click();assert.match(await speech.innerText(),/Resume/);
+  await page.waitForTimeout(550);await record.click();
+  await page.locator("#finishRecording").click();
+  await page.waitForFunction(()=>document.querySelector("#corrected").value==="Recognized words");
+  assert.equal(await page.locator("#replay").isVisible(),true);
+  assert.equal(await page.evaluate(()=>speechCalls.filter(x=>x==="speak").length),1);
+ }
  await page.locator("#corrected").fill("My reviewed transcript");
  await page.locator("#evaluate").click();await page.waitForSelector("#detail[open]");
  await page.locator(".close").click();
@@ -50,6 +75,7 @@ for(const [dir,target] of [["en",60],["zh",300]]){
 await page.getByRole("link",{name:"History",exact:true}).click();await page.reload();
 const data=await page.evaluate(()=>JSON.parse(localStorage.getItem("relay-history")));
 assert.equal(data.length,2);assert.deepEqual(data.map(r=>[r.dir,r.target]),[["zh",300],["en",60]]);
+assert.ok(data[1].recordSeconds>=1 && data[1].recordSeconds<2.2);
 await page.locator('#history [data-id="'+data[0].id+'"]').click();assert.equal(await page.locator(".score").textContent(),"100%");await page.locator(".close").click();
 await page.setViewportSize({width:390,height:844});await page.getByRole("link",{name:"Studio",exact:true}).click();assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
 assert.deepEqual(errors,[]);console.log("Browser workflow passed, including persistence, rubric examples and microphone fallback.");
