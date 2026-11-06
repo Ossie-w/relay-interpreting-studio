@@ -2,6 +2,33 @@
 
 English–Mandarin consecutive interpreting practice. Use the Studio to choose a direction, topic and duration. The training plan and completed assessments are stored in the current browser.
 
+## 从这个版本继续开发
+
+这是 Relay 英汉交替传译训练平台的课程项目。线上公开网站由 Sites 部署，GitHub 用来保存源码和版本历史。首次备份的标签是 `checkpoint-01`。[打开训练平台](https://aussy-interpret-studio.aussy0828.chatgpt.site/)
+
+在已登录 GitHub 的电脑上，运行以下命令即可取得完整项目并启动本地网站：
+
+```sh
+git clone https://github.com/Ossie-w/relay-interpreting-studio.git
+cd relay-interpreting-studio
+node serve.mjs
+```
+
+浏览器打开 <http://127.0.0.1:4173>。网站文件直接放在 `dist/` 中，可以直接编辑，刷新网页即可看到修改。
+
+| 要修改的功能 | 对应文件 |
+| --- | --- |
+| 页面结构、按钮位置和样式 | `dist/index.html`、`dist/style.css` |
+| 练习流程、训练计划、历史记录和录音控制 | `dist/app.js` |
+| 生成稿件、难度、目标时长、语音转写和 AI 评分 | `dist/ai.js` |
+| 双语示例、评分规则和反馈校验 | `dist/practice.js` |
+| 原文播放、选声、暂停、进度条和自然语音合成 | `dist/playback.js`、`dist/voice.js`、`dist/narration-worker.js` |
+| 录音回放和 WAV 转换 | `dist/recording.js` |
+| 离线课堂示例音频 | `dist/commute-en.wav`、`dist/commute-zh.wav` |
+| 自动化检查 | `tests/` |
+
+后续修改可在 `main` 上创建新分支，测试后提交并推送到 GitHub。想从今天的版本重新开始，可运行 `git switch -c continue-from-checkpoint checkpoint-01`。更新公开网站需要把相应版本部署到已有的 Sites 项目，项目标识保存在 `.openai/hosting.json` 中。个人练习记录保存在使用者的浏览器里，AI 模型由浏览器按需下载。
+
 ## Run on the presentation laptop
 
 With Node.js installed, open a terminal in this directory and run:
