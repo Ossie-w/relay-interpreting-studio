@@ -1,5 +1,6 @@
 import {topics,weekdays,defaultPlan,directionName,clock,localDate,score,escapeHTML as esc,demoSpeech,example} from "./practice.js";
 import {generateSpeech,assess,transcribe} from "./ai.js";
+import {preferredVoice} from "./voice.js";
 const $=id=>document.getElementById(id);
 function read(key,fallback){try{return JSON.parse(localStorage.getItem("relay-"+key))??fallback}catch{return fallback}}
 function write(key,value){localStorage.setItem("relay-"+key,JSON.stringify(value))}
@@ -79,7 +80,7 @@ function newSession(speech){
  };
  audio.onloadedmetadata=()=>{if(Number.isFinite(audio.duration)){attempt.speechSeconds=audio.duration;$("playtime").textContent="Source duration · "+clock(audio.duration)}};
  audio.onplaying=()=>{if(start===null)start=performance.now()};audio.onpause=finish;audio.onended=finish;
- }else{$("sourcePlay").onclick=playGenerated;$("playtime").textContent="Playback duration is measured after a full listen."}
+ }else{window.speechSynthesis?.getVoices();$("sourcePlay").onclick=playGenerated;$("playtime").textContent="Playback duration is measured after a full listen."}
  if(speech.mode==="Classroom demo"){
  const panel=document.createElement("details");
  panel.innerHTML='<summary>Rehearse with a prepared assessment</summary><p class="note">Choose an instructor example to review its transcript and feedback offline.</p><div class="chips"><button data-prepared="faithful">Faithful paraphrase</button><button data-prepared="number">Changed number</button><button data-prepared="omission">Omitted idea</button></div>';
@@ -104,8 +105,11 @@ function playGenerated(){
  }
  const session=attempt, lang=session.dir==="en"?"en":"zh";
  const segmenter=typeof Intl.Segmenter==="function"?new Intl.Segmenter(lang,{granularity:"sentence"}):null;
- const lines=segmenter?session.ideas.flatMap(idea=>Array.from(segmenter.segment(idea),part=>part.segment)):session.ideas;
- const run={session,timer:activeTimer(),paused:false,index:0,betweenLines:false};
+ const lines=session.ideas.flatMap(idea=>{
+  const sentences=segmenter?Array.from(segmenter.segment(idea),part=>part.segment.trim()):[idea];
+  return sentences.map((text,i)=>({text,endsPassage:i===sentences.length-1}));
+ });
+ const run={session,voice:null,localOnly:false,timer:activeTimer(),paused:false,index:0,betweenLines:false};
  speechRun=run;
  run.next=()=>{
   if(speechRun!==run)return;
@@ -117,12 +121,25 @@ function playGenerated(){
    $("playtime").textContent="Playback duration · "+clock(session.speechSeconds);
    stopSpeech();return;
   }
-  const line=new SpeechSynthesisUtterance(lines[run.index++]);
+  const sentence=lines[run.index++];
+  const line=new SpeechSynthesisUtterance(sentence.text);
   line.rate=Number($("playbackSpeed").value);
-  line.lang=lang==="en"?"en-US":"zh-CN";
-  line.voice=speechSynthesis.getVoices().find(v=>v.lang.toLowerCase().startsWith(lang))||null;
-  line.onend=run.next;
-  line.onerror=e=>{if(speechRun===run){stopSpeech();status("Playback failed ("+e.error+"). Check the installed voice or use the classroom demo.")}};
+  run.voice??=preferredVoice(speechSynthesis.getVoices(),lang,run.localOnly);
+  line.voice=run.voice;
+  line.lang=run.voice?.lang??(lang==="en"?"en-US":"zh-CN");
+  let started=false;
+  line.onstart=()=>{started=true};
+  line.onend=()=>{
+   if(sentence.endsPassage && run.index<lines.length)setTimeout(run.next,Math.round(160/line.rate));
+   else run.next();
+  };
+  line.onerror=e=>{
+   if(speechRun!==run)return;
+   if(!started && run.voice && !run.voice.localService && !run.localOnly){
+    run.localOnly=true;run.voice=null;run.index--;run.next();return;
+   }
+   stopSpeech();status("Playback failed ("+e.error+"). Check the installed voice or use the classroom demo.");
+  };
   speechSynthesis.speak(line);
  };
  speechSynthesis.resume();

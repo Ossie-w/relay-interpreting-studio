@@ -32,12 +32,17 @@ async function ask(system,prompt,schema,status,label,temp,tokens){
  return JSON.parse(result.choices[0].message.content);
 }
 const difficultyGuide={
- Beginner:"Use familiar vocabulary and short sentences with one main fact each. Introduce at most one simple quantity per passage.",
+ Beginner:"The listeners are third- or fourth-year English majors and postgraduate students beginning consecutive interpreting. Give a short professional briefing on a familiar situation. Develop each point with a specific detail: who made a decision, why it was needed, or what changed. Across the speech include one meaningful figure or time reference and one explicit cause or contrast. Use a few topic-specific terms whose meaning is clear from context. Vary sentence length and keep clauses easy to follow. Avoid slogans and generic appeals.",
  Intermediate:"Mix everyday and topic-specific vocabulary. Link causes and effects, include comparisons, and use some dates and quantities.",
  Advanced:"Use precise specialist terminology and nuanced arguments. Include conditions, concessions, and contrasting figures that require careful note-taking."
 };
 export async function generateSpeech(dir,topic,target,status,difficulty="Beginner"){
  const lang=dir==="en"?"English":"Simplified Mandarin Chinese", units=dir==="en"?"English words":"Chinese characters", length=Math.round(target*(dir==="en"?2.15:3.5));
+ const styleExample=difficulty==="Beginner"
+  ? (dir==="en"
+     ? 'Example of the intended level: “The library stayed open an hour later during exams. Evening visits rose, but staffing costs made it hard to extend the trial.” Use a new situation appropriate to the selected topic.'
+     : '语体示例：“考试周，图书馆把闭馆时间推迟了一小时。晚间到馆人数有所增加，但人手有限，学校还在评估能否长期实行。”请根据所选主题另写一个情境。')
+  : "";
  const schema=object({title:string,ideas:{type:"array",items:string}});
  const angle=["a public briefing","a community event","a pilot project","a workplace announcement","a student conference","a local survey"][crypto.getRandomValues(new Uint32Array(1))[0]%6];
  const passages=Math.max(4,Math.round(target/16));
@@ -48,7 +53,7 @@ export async function generateSpeech(dir,topic,target,status,difficulty="Beginne
  let result;
  try{
  result=await ask("Write original, fictional public speeches for consecutive interpreting. Write only in the requested language.",
- `Topic: ${topic}. Setting: ${angle}. Language: ${lang}. Target: ${length} ${units}. Write a short title and an array named ideas. Each entry is one substantive passage of the speech with one main idea. Together they form the entire spoken manuscript. Write about ${passages} passages of roughly ${Math.round(length/passages)} ${units} each. Write complete sentences that can be read aloud, including an opening and a closing. Difficulty: ${difficulty}. ${difficultyGuide[difficulty]} ${correction}`,schema,status,pass===0?"Writing your speech…":"Adjusting the manuscript to the selected duration…",0.8,Math.min(2800,length*2+350));
+ `Topic: ${topic}. Setting: ${angle}. Language: ${lang}. Target: ${length} ${units}. Write a short title and an array named ideas. Each entry is one substantive passage of the speech with one main idea. Together they form the entire spoken manuscript. Write about ${passages} passages of roughly ${Math.round(length/passages)} ${units} each. Write for the ear: connect each idea to the one before it, use idiomatic spoken phrasing and punctuation for natural pauses. Include a brief opening and closing. Each passage should develop a point over two or three sentences when space permits. Difficulty: ${difficulty}. ${difficultyGuide[difficulty]} ${styleExample} ${correction}`,schema,status,pass===0?"Writing your speech…":"Adjusting the manuscript to the selected duration…",0.8,Math.min(2800,length*2+350));
  }catch(error){
   if(best)break;
   if(error instanceof SyntaxError && pass===0)continue;
