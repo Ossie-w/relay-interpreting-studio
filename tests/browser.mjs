@@ -14,6 +14,31 @@ const page=await browser.newPage({viewport:{width:1440,height:1024}});
 const errors=[];page.on("pageerror",e=>errors.push(e.message));
 await page.goto(origin);
 await page.waitForSelector("#topics button");
+if(process.env.QA_LIVE_VOICE){
+ page.on("console",m=>{if(m.type()==="error" || m.text().startsWith("Voice test"))console.log(m.text().slice(0,300))});
+ for(const [lang,source] of [["en","The library now stays open until nine."],["zh","图书馆现在晚上九点关门。"]]){
+  const result=await page.evaluate(async({lang,source})=>{
+   const worker=new Worker("./narration-worker.js",{type:"module"});
+   try{
+    const blob=await new Promise((resolve,reject)=>{
+     const timeout=setTimeout(()=>reject(Error("Voice preparation timed out")),300000);
+     let previous="";
+     worker.onerror=e=>{clearTimeout(timeout);reject(Error(e.message))};
+     worker.onmessage=({data})=>{
+      if(data.blob||data.error){clearTimeout(timeout);data.error?reject(Error(data.error)):resolve(data.blob);return}
+      const stage=data.status?.split(" · ").slice(0,2).join(" ");
+      if(stage!==previous){console.log("Voice test "+stage);previous=stage}
+     };
+     worker.postMessage({lang,source});
+    });
+    const ctx=new AudioContext();
+    try{const samples=await ctx.decodeAudioData(await blob.arrayBuffer());return {duration:samples.duration,hasSignal:samples.getChannelData(0).some(x=>Math.abs(x)>.02)}}finally{await ctx.close()}
+   }finally{worker.terminate()}
+  },{lang,source});
+  assert.ok(result.duration>0.3 && result.hasSignal);
+  console.log("Live voice passed",lang,result);
+ }
+}
 if(process.env.QA_SCREENSHOT)await page.screenshot({path:process.env.QA_SCREENSHOT});
 for(const dir of ["en","zh"]){
  await page.locator('[data-dir="'+dir+'"]').click();
@@ -107,7 +132,7 @@ for(const [dir,target] of [["en",60],["zh",300]]){
   await speech.click();
   assert.equal(await page.evaluate(()=>latestLine.rate),0.75);
   await page.locator("#playbackSpeed").selectOption("2");
-  await page.evaluate(()=>latestLine.onend());
+  assert.match(await page.evaluate(()=>latestLine.text),/First sentence\. Second sentence\./);
   await page.waitForFunction(()=>latestLine.rate===2);
   assert.equal(await page.evaluate(()=>latestLine.rate),2);
   await page.evaluate(()=>{window.interruptedLine=latestLine});
@@ -144,7 +169,7 @@ for(const [dir,target] of [["en",60],["zh",300]]){
   await seek.press("Home");
   await seek.press("ArrowRight");
   await speech.click();
-  assert.equal(await page.evaluate(()=>latestLine.text.trim()),"sentence.");
+  assert.equal(await page.evaluate(()=>latestLine.text.trim()),"sentence. Second sentence.");
   await speech.click();
   const before=await page.evaluate(()=>speechCalls.filter(x=>x==="speak").length);
   await speech.click();
@@ -152,6 +177,17 @@ for(const [dir,target] of [["en",60],["zh",300]]){
   await seek.press("Home");
   assert.match(await speech.innerText(),/Pause/);
   assert.match(await page.evaluate(()=>latestLine.text),/^First sentence/);
+ }
+ if(process.env.QA_LIVE_VOICE){
+  await page.locator("#naturalVoice").click();
+  await page.waitForFunction(()=>document.querySelector("#sampleAudio")?.duration>0 || document.querySelector("#voiceStatus")?.textContent.includes("unavailable"),null,{timeout:240000});
+  assert.ok(await page.locator("#sampleAudio").count(),await page.locator("#voiceStatus").innerText());
+  await page.locator("#playbackSpeed").selectOption("1.25");
+  const heard=await page.locator("#sampleAudio").evaluate(async audio=>{
+   audio.currentTime=audio.duration/2;await audio.play();await new Promise(resolve=>setTimeout(resolve,150));audio.pause();
+   return !audio.error && audio.currentTime>=audio.duration/2 && audio.playbackRate===1.25;
+  });
+  assert.ok(heard);
  }
  await page.locator("#corrected").fill("My reviewed transcript");
  await page.locator("#evaluate").click();await page.waitForSelector("#detail[open]");

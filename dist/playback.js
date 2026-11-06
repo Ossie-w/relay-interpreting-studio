@@ -7,14 +7,23 @@ export function sourcePlayer(session,button,slider,label,speed,onError){
  const sentences=typeof Intl.Segmenter==="function"?segments("sentence"):null;
  const words=sentences?segments("word"):null;
  const positions=[];
+ // Let the voice phrase several sentences together. Limit each request because
+ // some installed voices stall on very long utterances.
+ const lines=[];
+ const limit=lang==="en"?260:100;
+ let passage="";
  for(const idea of session.ideas){
-  const lines=sentences?Array.from(sentences.segment(idea),s=>s.segment):[idea];
-  for(const text of lines){
+  for(const sentence of sentences?Array.from(sentences.segment(idea),s=>s.segment.trim()):[idea]){
+   if(passage && passage.length+sentence.length>limit){lines.push(passage);passage=""}
+   passage+=(passage && lang==="en"?" ":"")+sentence;
+  }
+ }
+ if(passage)lines.push(passage);
+ for(const text of lines){
    const indices=words?Array.from(words.segment(text)).filter(s=>s.isWordLike).map(s=>s.index):Array.from(text.matchAll(lang==="zh"?/\S/gu:/\S+/gu),s=>s.index);
    if(!indices.length)indices.push(0);
    const end=positions.length+indices.length;
    for(const offset of indices)positions.push({text,offset,end});
-  }
  }
  let position=0,playing=false,generation=0,startedAt=null,localOnly=false,voice=null,uninterrupted=true;
  let runSeconds=0,dragging=false,progressTimer=null;
@@ -79,7 +88,7 @@ export function sourcePlayer(session,button,slider,label,speed,onError){
     if(token!==generation)return;
     clearInterval(progressTimer);
     position=entry.end;render();
-    if(position===positions.length)next();else setTimeout(next,100/line.rate);
+    next();
    };
    line.onerror=()=>{
     if(token!==generation)return;
@@ -105,5 +114,5 @@ export function sourcePlayer(session,button,slider,label,speed,onError){
   render();if(resume && position<positions.length)speak();
  };
  render();
- return {pause,stop(){interrupt();position=0;uninterrupted=true;runSeconds=0;render()},get playing(){return playing}};
+ return {pause,changeRate(){if(playing){interrupt();speak()}},stop(){interrupt();position=0;uninterrupted=true;runSeconds=0;render()},get playing(){return playing}};
 }

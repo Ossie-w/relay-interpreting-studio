@@ -22,6 +22,8 @@ Open [the studio](http://127.0.0.1:4173). Use the same address and browser for e
 
 ## AI and scoring
 
+For AI-generated source speeches, **Prepare natural voice** renders the English or Mandarin manuscript into one audio track before playback. The first use loads roughly 340 MB of model weights. The browser synthesizes locally in a worker using [Kokoro JS](https://github.com/uzen-zone/kokoro-js) and [Kokoro-82M-v1.1-zh-ONNX](https://huggingface.co/onnx-community/Kokoro-82M-v1.1-zh-ONNX). Once ready, use the audio controls to pause, seek or replay, and the speed selector to change tempo. **Play speech** uses a system voice immediately.
+
 WebLLM runs Qwen2.5-3B-Instruct on the device for bilingual generation and assessment. Transformers.js runs multilingual Whisper on recorded audio. First use requires access to the runtime CDN, Hugging Face and the WebLLM model library host. Preload both models in the presentation browser. The studio sends the recording to the local transcription pipeline. Model availability, speed, and grading quality depend on the device. For long recordings, allow extra transcription time.
 
 The source manuscript is split into ideas. Each assessment assigns 1, 0.5 or 0 per idea. The app computes the percentage, checks submitted evidence against the reviewed transcript and retains the original transcription separately. Assessments are study feedback. Test a faithful paraphrase, a changed quantity and an omission with the live model before presenting.
