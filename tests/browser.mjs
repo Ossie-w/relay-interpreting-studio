@@ -51,7 +51,7 @@ await page.route("https://esm.run/@mlc-ai/web-llm@0.2.79",r=>r.fulfill({contentT
    await (await caches.open("qa-model")).put("/qa-model-file",new Response("fixture"));
   }
   options.initProgressCallback({text:"Loading model from cache",progress:1});
-  return {chat:{completions:{create:async(request)=>{window.testPrompt=request.messages.at(-1).content;return {choices:[{message:{content:JSON.stringify({title:"Test",ideas:["speech ".repeat(128)]})}}]}}}}};
+  return {chat:{completions:{create:async(request)=>{window.testPrompt=request.messages.at(-1).content;return {choices:[{message:{content:JSON.stringify({title:"Test",ideas:window.drafts?.shift()??["speech ".repeat(128)]})}}]}}}}};
  }`}));
 await page.goto(origin+"/#studio");
 for(const [warm,level] of [[false,"Beginner"],[true,"Intermediate"],[false,"Advanced"]]){
@@ -64,6 +64,22 @@ for(const [warm,level] of [[false,"Beginner"],[true,"Intermediate"],[false,"Adva
  assert.ok((await page.locator("#session .meta").textContent()).includes(level));
  const messages=await page.evaluate(()=>statusMessages);
  assert.equal(messages.some(m=>m.includes("2 GB")),!warm);
+}
+// Reproduce two off-target drafts and check the usable manuscript that reaches playback.
+for(const [dir,unit,draftLengths,expectedLength] of [
+ ["en","speech ",[40,85],85],
+ ["zh","车",[330,360],330]
+]){
+ await page.locator('[data-dir="'+dir+'"]').click();
+ await page.locator("#difficulty").selectOption("Beginner");
+ await page.evaluate(({unit,draftLengths})=>{
+  window.drafts=draftLengths.map(n=>[unit.repeat(n)]);
+ },{unit,draftLengths});
+ await page.locator("#generate").click();
+ await page.waitForFunction(()=>document.querySelector("#sourcePlay")||document.querySelector("#sessionstatus")?.textContent.startsWith("Generation unavailable"));
+ assert.ok(await page.locator("#sourcePlay").count(),"Off-target length should still yield a practice session");
+ assert.ok((await page.locator("#session details p").first().textContent()).includes(unit.repeat(expectedLength).trim()));
+ assert.match(await page.locator("#session .meta").textContent(),/Estimated/);
 }
 // Replace the model boundary only in this browser test. Exercise the real UI and storage.
 await page.route("**/ai.js",r=>r.fulfill({contentType:"text/javascript",body:`
