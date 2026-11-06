@@ -1,11 +1,26 @@
 import { validateAssessment } from "./practice.js";
 let enginePromise, recognizerPromise;
+const modelId="Qwen2.5-3B-Instruct-q4f16_1-MLC";
+
+function modelProgress(report,initialStatus){
+ const percent=Number.isFinite(report.progress)?" · "+Math.round(report.progress*100)+"%":"";
+ if(report.text.startsWith("Loading model from cache"))return "Loading saved model into device memory"+percent;
+ if(report.text.startsWith("Fetching param cache"))return "Preparing model files · reusing saved files and fetching missing ones"+percent;
+ if(report.text.startsWith("Loading GPU shader"))return "Preparing GPU for generation"+percent;
+ return initialStatus;
+}
 async function engine(status){
  if (!navigator.gpu || !(await navigator.gpu.requestAdapter())) throw Error("Live speech generation and assessment require WebGPU. Use a WebGPU-enabled desktop browser, or open the classroom demo.");
  if(!enginePromise) enginePromise=(async()=>{
-   status("Loading bilingual AI. The first download is about 2 GB; keep this tab open.");
-   const { CreateMLCEngine }=await import("https://esm.run/@mlc-ai/web-llm@0.2.79");
-   return CreateMLCEngine("Qwen2.5-3B-Instruct-q4f16_1-MLC",{initProgressCallback:r=>status(r.text)}, {context_window_size:4096});
+   status("Checking this browser for saved model files…");
+   const {CreateMLCEngine,hasModelInCache}=await import("https://esm.run/@mlc-ai/web-llm@0.2.79");
+   const cached=await hasModelInCache(modelId).catch(()=>null);
+   const initialStatus=cached===true?"Loading saved model into device memory…":
+     cached===false?"Preparing missing model files. A full first download is about 2 GB.":
+     "Preparing model files on this device…";
+   status(initialStatus);
+   if(cached===false)navigator.storage?.persist?.().catch(()=>{});
+   return CreateMLCEngine(modelId,{initProgressCallback:r=>status(modelProgress(r,initialStatus))},{context_window_size:4096});
  })().catch(e=>{enginePromise=null;throw e});
  return enginePromise;
 }
@@ -55,7 +70,7 @@ export async function transcribe(blob,dir,status){
  samples=(await offline.startRendering()).getChannelData(0);
  } finally {await ctx.close()}
  if(!recognizerPromise)recognizerPromise=(async()=>{
- status("Downloading multilingual Whisper for your first transcription…");
+ status("Preparing Whisper for transcription…");
  const {pipeline,env}=await import("https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.2/dist/transformers.min.js");
  env.allowLocalModels=false;
  return pipeline("automatic-speech-recognition","Xenova/whisper-tiny",{device:"wasm",dtype:"q8",progress_callback:r=>{if(r.status==="progress")status(`Loading Whisper · ${r.file} · ${Math.round(r.progress)}%`)}});

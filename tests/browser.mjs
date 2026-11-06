@@ -33,6 +33,33 @@ for(const d of ["en","zh"]){
  await page.locator('#samples [data-id="example-'+d+'-'+v+'"]').click();
  assert.equal(await page.locator(".score").textContent(),n+"%");await page.locator(".close").click();
  }}
+// Exercise cold, warm and cleared browser storage through the real Generate button.
+await page.addInitScript(()=>{
+ Object.defineProperty(navigator,"gpu",{value:{requestAdapter:async()=>({})},configurable:true});
+ window.statusMessages=[];
+ new MutationObserver(records=>{
+  for(const r of records)if(r.target.id==="sessionstatus")window.statusMessages.push(r.target.textContent);
+ }).observe(document,{subtree:true,childList:true});
+});
+await page.route("https://esm.run/@mlc-ai/web-llm@0.2.79",r=>r.fulfill({contentType:"text/javascript",headers:{"Access-Control-Allow-Origin":"*"},body:`
+ export async function hasModelInCache(){return !!(await caches.match("/qa-model-file"))}
+ export async function CreateMLCEngine(id,options){
+  await new Promise(resolve=>setTimeout(resolve,20));
+  if(!await hasModelInCache()){
+   await (await caches.open("qa-model")).put("/qa-model-file",new Response("fixture"));
+  }
+  options.initProgressCallback({text:"Loading model from cache",progress:1});
+  return {chat:{completions:{create:async()=>({choices:[{message:{content:JSON.stringify({title:"Test",ideas:["speech ".repeat(128)]})}}]})}}};
+ }`}));
+await page.goto(origin+"/#studio");
+for(const warm of [false,true,false]){
+ await page.reload();
+ if(!warm)await page.evaluate(()=>caches.delete("qa-model"));
+ await page.locator("#generate").click();
+ await page.waitForSelector("#corrected");
+ const messages=await page.evaluate(()=>statusMessages);
+ assert.equal(messages.some(m=>m.includes("2 GB")),!warm);
+}
 // Replace the model boundary only in this browser test. Exercise the real UI and storage.
 await page.route("**/ai.js",r=>r.fulfill({contentType:"text/javascript",body:`
 export async function generateSpeech(dir,topic,target){return {dir,topic,target,title:"QA session",source:"Source passage",ideas:["Source passage"],mode:"AI-generated"}}
