@@ -1,5 +1,5 @@
 import { validateAssessment } from "./practice.js";
-let enginePromise, recognizerPromise;
+let enginePromise;
 const modelId="Qwen2.5-3B-Instruct-q4f16_1-MLC";
 
 function modelProgress(report,initialStatus){
@@ -86,25 +86,5 @@ export async function assess(speech,transcript,status){
  }
  return validateAssessment(speech.ideas,transcript,{rows,suggestion:drill});
 }
-export async function transcribe(blob,dir,status){
- status("Preparing your recording…");
- const ctx=new AudioContext();
- let samples;
- try{
- const buffer=await ctx.decodeAudioData(await blob.arrayBuffer());
- const offline=new OfflineAudioContext(1,Math.ceil(buffer.duration*16000),16000);
- const source=offline.createBufferSource();source.buffer=buffer;source.connect(offline.destination);source.start();
- samples=(await offline.startRendering()).getChannelData(0);
- } finally {await ctx.close()}
- if(!recognizerPromise)recognizerPromise=(async()=>{
- status("Preparing Whisper for transcription…");
- const {pipeline,env}=await import("https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.2/dist/transformers.min.js");
- env.allowLocalModels=false;
- return pipeline("automatic-speech-recognition","Xenova/whisper-tiny",{device:"wasm",dtype:"q8",progress_callback:r=>{if(r.status==="progress")status(`Loading Whisper · ${r.file} · ${Math.round(r.progress)}%`)}});
- })().catch(e=>{recognizerPromise=null;throw e});
- const recognize=await recognizerPromise;
- status("Transcribing your recording in "+(dir==="en"?"Mandarin":"English")+"…");
- const result=await recognize(samples,{language:dir==="en"?"chinese":"english",task:"transcribe",chunk_length_s:30,stride_length_s:5});
- return result.text.trim();
-}
+export {transcribeRecording as transcribe} from "./transcription.js";
 

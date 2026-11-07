@@ -12,8 +12,8 @@ const browser=await chromium.launch({executablePath:process.env.EDGE_PATH||undef
 try{
 const page=await browser.newPage({viewport:{width:1440,height:1024}});
 const errors=[];page.on("pageerror",e=>errors.push(e.message));
-await page.goto(origin);
-await page.waitForSelector("#topics button");
+await page.goto(origin+"/#history");
+await page.waitForSelector("#topics button",{state:"attached"});
 if(process.env.QA_LIVE_VOICE){
  page.on("console",m=>{if(m.type()==="error" || m.text().startsWith("Voice test"))console.log(m.text().slice(0,300))});
  for(const [lang,source] of [["en","The library now stays open until nine."],["zh","图书馆现在晚上九点关门。"]]){
@@ -41,8 +41,9 @@ if(process.env.QA_LIVE_VOICE){
 }
 if(process.env.QA_SCREENSHOT)await page.screenshot({path:process.env.QA_SCREENSHOT});
 for(const dir of ["en","zh"]){
- await page.locator('[data-dir="'+dir+'"]').click();
- await page.locator("#demo").click();
+ await page.getByRole("link",{name:"History",exact:true}).click();
+ await page.locator("#examplesDir").selectOption(dir);
+ await page.locator("#offlineExercise").click();
  await page.waitForFunction(()=>document.querySelector("#sampleAudio").duration>0);
  await page.locator("#playbackSpeed").selectOption("1.5");
  assert.equal(await page.locator("#sampleAudio").evaluate(a=>a.playbackRate),1.5);
@@ -62,6 +63,8 @@ for(const d of ["en","zh"]){
  }}
 // Exercise cold, warm and cleared browser storage through the real Generate button.
 await page.addInitScript(()=>{
+ const date=new Date(),key=[date.getFullYear(),String(date.getMonth()+1).padStart(2,"0"),String(date.getDate()).padStart(2,"0")].join("-");
+ localStorage.setItem("relay-daily",JSON.stringify({date:key,speech:{dir:"en",topic:"Education",target:60,difficulty:"Intermediate",title:"Saved daily speech",source:"A saved daily recommendation.",ideas:["A saved daily recommendation."],mode:"AI-generated"}}));
  Object.defineProperty(navigator,"gpu",{value:{requestAdapter:async()=>({})},configurable:true});
  window.statusMessages=[];
  new MutationObserver(records=>{
@@ -84,7 +87,7 @@ for(const [warm,level] of [[false,"Beginner"],[true,"Intermediate"],[false,"Adva
  await page.locator("#difficulty").selectOption(level);
  if(!warm)await page.evaluate(()=>caches.delete("qa-model"));
  await page.locator("#generate").click();
- await page.waitForSelector("#corrected");
+ await page.waitForFunction(()=>!document.querySelector("#generate").disabled&&window.testPrompt);
  assert.ok((await page.evaluate(()=>window.testPrompt)).includes("Difficulty: "+level));
  assert.ok((await page.locator("#session .meta").textContent()).includes(level));
  const messages=await page.evaluate(()=>statusMessages);
@@ -101,7 +104,7 @@ for(const [dir,unit,draftLengths,expectedLength] of [
   window.drafts=draftLengths.map(n=>[unit.repeat(n)]);
  },{unit,draftLengths});
  await page.locator("#generate").click();
- await page.waitForFunction(()=>document.querySelector("#sourcePlay")||document.querySelector("#sessionstatus")?.textContent.startsWith("Generation unavailable"));
+ await page.waitForFunction(()=>!document.querySelector("#generate").disabled && (document.querySelector("#sourcePlay")||document.querySelector("#sessionstatus")?.textContent.startsWith("Generation unavailable")));
  assert.ok(await page.locator("#sourcePlay").count(),"Off-target length should still yield a practice session");
  assert.ok((await page.locator("#session details p").first().textContent()).includes(unit.repeat(expectedLength).trim()));
  assert.match(await page.locator("#session .meta").textContent(),/Estimated/);
@@ -116,6 +119,7 @@ for(const [dir,target] of [["en",60],["zh",300]]){
  await page.locator('[data-dir="'+dir+'"]').click();
  await page.locator("#duration").press(target===300?"End":"Home");
  await page.locator("#generate").click();
+ await page.waitForFunction(()=>!document.querySelector("#generate").disabled&&document.querySelector("#session h2").textContent==="QA session");
  if(dir==="en"){
   // Drive a real MediaRecorder with a synthetic microphone. Headless Edge has no speaking voice.
   await page.evaluate(()=>{
@@ -140,7 +144,7 @@ for(const [dir,target] of [["en",60],["zh",300]]){
   await page.evaluate(()=>interruptedLine.onend());
   await speech.click();
   assert.ok(await page.evaluate(()=>latestLine!==interruptedLine));
-  await record.click();assert.match(await record.innerText(),/Pause/);
+  await record.click();await page.waitForFunction(()=>/Pause/.test(document.querySelector("#record").textContent));assert.match(await record.innerText(),/Pause/);
   assert.ok(await speech.isDisabled());
   await page.waitForTimeout(550);await record.click();
   assert.match(await record.innerText(),/Resume/);assert.ok(await speech.isEnabled());

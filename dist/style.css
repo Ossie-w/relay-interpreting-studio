@@ -2,3 +2,11 @@
 
 .speedControl{display:inline-flex;align-items:center;gap:8px;margin:8px 0 8px 10px;font-size:13px;font-weight:600}.speedControl select{padding:6px 8px}
 .sourceSeek{display:block;width:100%;margin:12px 0 6px;accent-color:var(--purple)}
+.regenerate{margin:12px 0 4px;color:var(--purple)}
+.micChoice{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:14px 0;font-size:13px;font-weight:600}
+.micChoice select{max-width:100%;min-width:0;flex:1}
+.micMonitor{padding:12px;background:#f6f5fa;border-radius:8px}
+.micMonitor meter{width:100%;height:13px;accent-color:var(--purple)}
+.micMonitor p{margin-top:6px}
+#transcriptStatus{margin-bottom:10px}
+.herocopy{max-width:100%;overflow-wrap:anywhere}

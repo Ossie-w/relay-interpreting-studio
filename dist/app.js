@@ -1,8 +1,9 @@
 import {topics,weekdays,defaultPlan,directionName,clock,localDate,score,escapeHTML as esc,demoSpeech,example} from "./practice.js";
 import {generateSpeech,assess,transcribe} from "./ai.js";
 import {sourcePlayer} from "./playback.js";
-import {playableRecording} from "./recording.js";
-let narrationWorker=null,narrationURL="";
+import {openMicrophone} from "./microphone.js";
+import {cachedNarration,renderNarration,cancelNarration} from "./narration.js";
+let narrationURL="",voiceJob=null;
 const $=id=>document.getElementById(id);
 function read(key,fallback){try{return JSON.parse(localStorage.getItem("relay-"+key))??fallback}catch{return fallback}}
 function write(key,value){localStorage.setItem("relay-"+key,JSON.stringify(value))}
@@ -10,7 +11,7 @@ let plan=read("plan",defaultPlan),records=read("history",[]),dir=plan.direction,
 const today=()=>localDate(new Date());
 function notice(msg){$("notice").textContent=msg;clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>$("notice").textContent="",6500)}
 function status(s){const node=$("sessionstatus");if(node) node.textContent=s}
-function busyState(value){busy=value;for(const id of ["generate","demo","record","evaluate","retryASR","sourcePlay","finishSession"])if($(id))$(id).disabled=value;if($("corrected"))$("corrected").disabled=value;if($("sampleAudio"))$("sampleAudio").controls=!value;if($("sourceSeek"))$("sourceSeek").disabled=value;}
+function busyState(value){busy=value;for(const id of ["generate","demo","record","evaluate","retryASR","sourcePlay","finishSession","regenerate","microphone","offlineExercise"])if($(id))$(id).disabled=value;if($("corrected"))$("corrected").disabled=value;if($("sampleAudio"))$("sampleAudio").controls=!value;if($("sourceSeek"))$("sourceSeek").disabled=value;}
 function activeTimer(){
  let elapsed=0, since=null;
  return {
@@ -26,9 +27,9 @@ function pauseSource(){
 function stopSpeech(){
  speechRun?.stop();$("sampleAudio")?.pause();$("replay")?.pause();
 }
-function discard(){if(recorder?.state==="recording"||busy){notice("Finish the current operation first.");return false}
+function discard(){if(recorder||busy){notice("Finish the current operation first.");return false}
  if(attempt&&!attempt.saved&&(attempt.blob||$("corrected")?.value.trim())&&!confirm("Start a new session and discard the unsaved attempt?"))return false;
- stopSpeech();narrationWorker?.terminate();narrationWorker=null;
+ stopSpeech();voiceJob=null;cancelNarration();
  if(narrationURL)URL.revokeObjectURL(narrationURL);narrationURL="";
  if(takeURL)URL.revokeObjectURL(takeURL);takeURL="";attempt=null;speechRun=null;return true;}
 const svg=document.querySelector(".waves"),ns="http://www.w3.org/2000/svg";
@@ -49,7 +50,8 @@ function planView(){
  $("plan").innerHTML=`<form id="planForm" class="card"><div class="cardheading"><div class="tile">◷</div><div><h2>Your daily plan</h2><p>Set the defaults for your practice sessions.</p></div></div><fieldset><legend>Default direction</legend><select name="direction">${["en","zh"].map(d=>`<option value="${d}" ${plan.direction===d?"selected":""}>${directionName(d)}</option>`).join("")}</select></fieldset><fieldset><legend>Daily target in minutes</legend><input type="number" name="minutes" value="${plan.minutes}" min="1" max="240" required aria-label="Daily target in minutes"></fieldset><fieldset><legend>Practice days</legend>${weekdays.map((w,i)=>`<label class="choice"><input type="checkbox" name="days" value="${i}" ${plan.days.includes(i)?"checked":""}> ${w}</label>`).join("")}</fieldset><fieldset><legend>Preferred topics</legend>${topics.map(t=>`<label class="choice"><input type="checkbox" name="topics" value="${t}" ${plan.topics.includes(t)?"checked":""}> ${t}</label>`).join("")}</fieldset><button class="action">Save plan</button></form>`;
  $("planForm").onsubmit=e=>{e.preventDefault();const f=new FormData(e.target),days=f.getAll("days").map(Number),themes=f.getAll("topics");if(!days.length||!themes.length)return notice("Choose at least one day and one topic.");const next={days,topics:themes,minutes:Number(f.get("minutes")),direction:f.get("direction")};try{write("plan",next);plan=next;dir=plan.direction;topic=plan.topics[0];controls();dashboard();notice("Daily plan saved.")}catch{notice("Browser storage unavailable. Your plan could not be saved.")}};
 }
-function historyView(){ $("history").innerHTML=`<article class="card"><h2>Your attempts</h2><p class="secondary block">${records.length?"Saved on this browser.":"Your completed practice will appear here."}</p>${records.map(row).join("")}</article><article class="card"><h2>Classroom examples</h2><p class="secondary block">Prepared assessments for the same speech. Choose a direction to compare outcomes.</p><select id="examplesDir" aria-label="Example direction"><option value="en">English → Mandarin</option><option value="zh">Mandarin → English</option></select><div id="samples"></div></article>`;
+function historyView(){ $("history").innerHTML=`<article class="card"><h2>Your attempts</h2><p class="secondary block">${records.length?"Saved on this browser.":"Your completed practice will appear here."}</p>${records.map(row).join("")}</article><article class="card"><h2>Prepared examples</h2><button id="offlineExercise" class="block">Open offline practice</button><p class="secondary block">Prepared assessments for the same speech. Choose a direction to compare outcomes.</p><select id="examplesDir" aria-label="Example direction"><option value="en">English → Mandarin</option><option value="zh">Mandarin → English</option></select><div id="samples"></div></article>`;
+ $("offlineExercise").onclick=()=>{if(discard()){location.hash="#studio";newSession(demoSpeech($("examplesDir").value))}};
  const draw=()=>$("samples").innerHTML=["faithful","number","omission"].map((v,i)=>{const r=example($("examplesDir").value,v);return row({...r,title:["Faithful paraphrase","Changed number","Omitted idea"][i]})}).join("");$("examplesDir").onchange=draw;draw()}
 function route(){
  const route=["studio","plan","history"].includes(location.hash.slice(1))?location.hash.slice(1):"studio";
@@ -74,38 +76,49 @@ function connectAudio(audio,session){
  audio.onplaying=()=>{if(start===null)start=performance.now()};audio.onpause=finish;audio.onended=finish;
  audio.addEventListener("play",()=>$("replay").pause());
 }
-function prepareNarration(session){
- const button=$("naturalVoice"),message=$("voiceStatus");
- if(narrationWorker){narrationWorker.terminate();narrationWorker=null;button.textContent="Prepare natural voice";message.textContent="Preparation cancelled.";return}
- let worker;
- function finish(){
-  worker?.terminate();narrationWorker=null;button.textContent="Prepare natural voice";
- }
- function fail(reason){
-  finish();message.textContent="Natural voice unavailable. You can use Play speech. "+reason;
- }
- try{
-  worker=new Worker(new URL("./narration-worker.js",import.meta.url),{type:"module"});
-  narrationWorker=worker;
-  button.textContent="Cancel preparation";message.textContent="Loading voice model on this device…";
-  worker.onerror=e=>{if(narrationWorker===worker)fail(e.message||"Unable to start the voice engine.")};
-  worker.onmessage=({data})=>{
-   if(narrationWorker!==worker||attempt!==session)return;
-   if(data.error)return fail(data.error);
-   if(!data.blob){message.textContent=data.status;return}
-   finish();speechRun?.stop();speechRun=null;
-   const audio=document.createElement("audio");audio.id="sampleAudio";audio.controls=!busy||recorder?.state==="paused";
-   $("sourcePlay").replaceWith(audio);$("sourceSeek").remove();button.remove();
-   connectAudio(audio,session);narrationURL=URL.createObjectURL(data.blob);audio.src=narrationURL;
-   audio.playbackRate=Number($("playbackSpeed").value);
-   message.textContent="Natural voice ready. Press play to listen.";
-  };
-  worker.postMessage({source:session.source,lang:session.dir});
- }catch(error){fail(error.message)}
+function mountNarration(session,blob,message){
+ if(attempt!==session||!$("sourcePlay"))return;
+ speechRun?.stop();speechRun=null;
+ const audio=document.createElement("audio");audio.id="sampleAudio";
+ audio.controls=!busy||recorder?.state==="paused";
+ $("sourcePlay").replaceWith(audio);$("sourceSeek")?.remove();$("naturalVoice")?.remove();
+ connectAudio(audio,session);
+ if(narrationURL)URL.revokeObjectURL(narrationURL);
+ narrationURL=URL.createObjectURL(blob);audio.src=narrationURL;
+ audio.playbackRate=Number($("playbackSpeed").value);
+ $("voiceStatus").textContent=message;
 }
-function newSession(speech){
+async function prepareNarration(session){
+ const button=$("naturalVoice"),message=$("voiceStatus");
+ if(voiceJob){
+  voiceJob=null;cancelNarration();button.textContent="Prepare natural voice";
+  message.textContent="Preparation cancelled. Saved model files are kept.";return;
+ }
+ const job={};voiceJob=job;button.textContent="Cancel preparation";
+ try{
+  const result=await renderNarration(session.source,session.dir,text=>{
+   if(voiceJob===job&&attempt===session)message.textContent=text;
+  });
+  if(voiceJob!==job||attempt!==session)return;
+  mountNarration(session,result.blob,(result.reused?"Saved natural voice restored. Ready to play.":
+   result.saved?"Natural voice ready and saved in this browser.":"Natural voice ready. Browser storage is unavailable; this track lasts for this session.")+(result.warning?" "+result.warning:""));
+ }catch(error){
+  if(voiceJob===job&&attempt===session){
+   button.textContent="Prepare natural voice";
+   message.textContent="Natural voice unavailable. You can use Play speech. "+error.message;
+  }
+ }finally{if(voiceJob===job)voiceJob=null}
+}
+function hero(speech){
+ $("heroLabel").textContent=speech.mode==="Classroom demo"?"OFFLINE PRACTICE":"TODAY’S PRACTICE";
+ $("heroTitle").textContent=speech.title;
+ $("heroDescription").textContent=speech.topic+" · "+(speech.difficulty||"Beginner")+" · "+directionName(speech.dir)+" · "+clock(speech.target);
+ $("demo").textContent="▶ Start this practice";
+}
+function newSession(speech,scroll=true){
  attempt={...speech,id:crypto.randomUUID(),original:"",recordSeconds:0,listenSeconds:0,speechSeconds:null,blob:null,saved:false};
- $("session").hidden=false;$("session").innerHTML=`<small class="kicker">${esc(speech.mode.toUpperCase())}</small><h2>${esc(speech.title)}</h2><p class="meta">${esc(speech.topic)}${speech.difficulty?" · "+esc(speech.difficulty):""} · ${directionName(speech.dir)} · Target ${clock(speech.target)}${speech.estimatedSeconds?" · Estimated "+clock(speech.estimatedSeconds)+" at 1×":""}</p><div class="block"><h3>1. Listen to the source</h3>${speech.mode==="Classroom demo"?`<audio id="sampleAudio" controls preload="metadata" src="./commute-${speech.dir}.wav"></audio>`:`<button class="action" id="naturalVoice">Prepare natural voice</button> <button id="sourcePlay">▶ Play speech</button>`}<label class="speedControl">Playback speed <select id="playbackSpeed">${[0.75,1,1.25,1.5,2].map(rate=>`<option value="${rate}" ${rate===1?"selected":""}>${rate}×</option>`).join("")}</select></label>${speech.mode==="Classroom demo"?"":`<input type="range" id="sourceSeek" class="sourceSeek" aria-label="Source playback position" min="0" value="0" step="1">`}<p class="note" id="playtime"></p>${speech.mode==="Classroom demo"?"":`<p class="note" id="voiceStatus" role="status">Natural voice prepares a continuous audio track. First use loads a voice model (about 340 MB).</p>`}<details><summary>Reveal manuscript</summary><p>${esc(speech.source)}</p></details></div><div class="block sectionrule"><h3>2. Record your interpretation</h3><p class="note">Interpret into ${speech.dir==="en"?"Mandarin":"English"}. You can also enter your interpretation below.</p><div class="wrap block"><button id="record">● &nbsp; Start recording</button><button id="finishRecording" hidden>■ Finish recording</button><span id="rectime" class="note"></span></div><audio hidden id="replay" controls></audio><button id="retryASR" hidden>Retry transcription</button></div><div class="block sectionrule"><h3>3. Review and assess</h3><label for="corrected" class="field">Your reviewed transcript</label><textarea id="corrected" rows="5" placeholder="Your transcript appears here. You can correct recognition errors before assessment."></textarea><details id="originalBox" hidden><summary>Original transcription</summary><p id="originalText"></p></details><button class="action" id="evaluate">Assess and save attempt</button></div><div role="status" class="sessionstatus" id="sessionstatus"></div>`;
+ hero(speech);
+ $("session").hidden=false;$("session").innerHTML=`<small class="kicker">${esc(speech.mode.toUpperCase())}</small><h2>${esc(speech.title)}</h2><button id="regenerate" class="regenerate">↻ Regenerate</button><p class="meta">${esc(speech.topic)}${speech.difficulty?" · "+esc(speech.difficulty):""} · ${directionName(speech.dir)} · Target ${clock(speech.target)}${speech.estimatedSeconds?" · Estimated "+clock(speech.estimatedSeconds)+" at 1×":""}</p><div class="block"><h3>1. Listen to the source</h3>${speech.mode==="Classroom demo"?`<audio id="sampleAudio" controls preload="metadata" src="./commute-${speech.dir}.wav"></audio>`:`<button class="action" id="naturalVoice">Prepare natural voice</button> <button id="sourcePlay">▶ Play speech</button>`}<label class="speedControl">Playback speed <select id="playbackSpeed">${[0.75,1,1.25,1.5,2].map(rate=>`<option value="${rate}" ${rate===1?"selected":""}>${rate}×</option>`).join("")}</select></label>${speech.mode==="Classroom demo"?"":`<input type="range" id="sourceSeek" class="sourceSeek" aria-label="Source playback position" min="0" value="0" step="1">`}<p class="note" id="playtime"></p>${speech.mode==="Classroom demo"?"":`<p class="note" id="voiceStatus" role="status">First use saves a voice model (about 340 MB). New manuscripts need synthesis; saved tracks reopen immediately.</p>`}<details><summary>Reveal manuscript</summary><p>${esc(speech.source)}</p></details></div><div class="block sectionrule"><h3>2. Record your interpretation</h3><p class="note">Interpret into ${speech.dir==="en"?"Mandarin":"English"}. You can also enter your interpretation below.</p><label class="micChoice">Microphone <select id="microphone" aria-label="Microphone"><option value="">System default microphone</option></select></label><div class="micMonitor"><meter id="micLevel" min="0" max="1" value="0" aria-label="Microphone input level"></meter><p id="micStatus" class="note" role="status">Speak after starting: the input bar should move.</p></div><div class="wrap block"><button id="record">● &nbsp; Start recording</button><button id="finishRecording" hidden>■ Finish recording</button><span id="rectime" class="note"></span></div><audio hidden id="replay" controls></audio><button id="retryASR" hidden>Retry transcription</button></div><div class="block sectionrule"><h3>3. Review and assess</h3><label for="corrected" class="field">Your reviewed transcript</label><p id="transcriptStatus" class="note" role="status">Finish a recording to transcribe it automatically.</p><textarea id="corrected" rows="5" placeholder="Your transcript appears here. You can correct recognition errors before assessment."></textarea><details id="originalBox" hidden><summary>Original transcription</summary><p id="originalText"></p></details><button class="action" id="evaluate">Assess and save attempt</button></div><div role="status" class="sessionstatus" id="sessionstatus"></div>`;
  $("playbackSpeed").onchange=()=>{
   const audio=$("sampleAudio");
   if(audio)audio.playbackRate=Number($("playbackSpeed").value);
@@ -114,7 +127,11 @@ function newSession(speech){
  if($("sampleAudio")){
  connectAudio($("sampleAudio"),attempt);
  }else{
-  $("naturalVoice").onclick=()=>prepareNarration(attempt);
+  const session=attempt;
+  $("naturalVoice").onclick=()=>prepareNarration(session);
+  cachedNarration(session.source,session.dir).then(blob=>{
+   if(blob&&attempt===session&&!voiceJob)mountNarration(session,blob,"Saved natural voice restored. Ready to play.");
+  });
   window.speechSynthesis?.getVoices();
   speechRun=sourcePlayer(attempt,$("sourcePlay"),$("sourceSeek"),$("playtime"),$("playbackSpeed"),status);
  }
@@ -127,11 +144,60 @@ function newSession(speech){
  panel.onclick=e=>{const variant=e.target.dataset.prepared;if(variant)showReport(example(speech.dir,variant))};
  $("session").append(panel);
  }
+ refreshMicrophones();
+ $("microphone").onchange=()=>{try{write("microphone",$("microphone").value)}catch{}};
+ $("regenerate").onclick=()=>generateSession({dir:attempt.dir,topic:attempt.topic,target:attempt.target,difficulty:attempt.difficulty||"Beginner"});
  $("finishRecording").onclick=finishRecording;$("record").onclick=record;$("retryASR").onclick=()=>recognizeTake();$("evaluate").onclick=evaluate;
- $("session").scrollIntoView({behavior:"smooth",block:"start"});
+ if(scroll)$("session").scrollIntoView({behavior:"smooth",block:"start"});
 }
-$("demo").onclick=()=>{if(discard())newSession(demoSpeech(dir))};
-$("setup").onsubmit=async e=>{e.preventDefault();if(!discard())return;busyState(true);$("session").hidden=false;$("session").innerHTML='<h2>Preparing your speech</h2><p class="sessionstatus" role="status" id="sessionstatus"></p>';$("session").scrollIntoView({behavior:"smooth"});try{newSession(await generateSpeech(dir,topic,Number($("duration").value),status,$("difficulty").value))}catch(err){status("Generation unavailable. "+err.message+" The classroom demo is available offline.")}finally{busyState(false)}};
+async function generateSession(settings,isDaily=false){
+ // Keep the current exercise until its replacement succeeds.
+ if(recorder||busy)return notice("Finish the current operation first.");
+ if(attempt&&!attempt.saved&&(attempt.blob||$("corrected")?.value.trim())&&!confirm("Generate a new exercise and discard the unsaved attempt?"))return;
+ stopSpeech();busyState(true);
+ const report=text=>{status(text);$("heroDescription").textContent=text};
+ $("demo").textContent="Preparing practice…";
+ if(!attempt){$("session").hidden=false;$("session").innerHTML='<h2>Preparing today’s practice</h2><p class="sessionstatus" role="status" id="sessionstatus"></p>'}
+ try{
+  const speech=await generateSpeech(settings.dir,settings.topic,settings.target,report,settings.difficulty);
+  busyState(false);
+  // Confirmation has already been given; do not prompt a second time.
+  if(attempt)attempt.saved=true;
+  discard();newSession(speech,!isDaily);
+  try{write("daily",{date:today(),speech})}catch{notice("This browser could not save today’s recommendation.")}
+ }catch(error){
+  if(attempt)hero(attempt);
+  else{$("heroTitle").textContent="Your daily interpreting practice";$("demo").textContent="Retry daily recommendation"}
+  const message="Generation unavailable. "+error.message;
+  $("heroDescription").textContent=message;status(message);
+ }finally{busyState(false)}
+}
+function dailySettings(){
+ const choices=plan.topics.length?plan.topics:topics;
+ return {dir:plan.direction,topic:choices[crypto.getRandomValues(new Uint32Array(1))[0]%choices.length],target:60,difficulty:"Intermediate"};
+}
+function openDaily(){
+ if(attempt){location.hash="#studio";$("session").scrollIntoView({behavior:"smooth"});return}
+ const saved=read("daily",null);
+ if(saved?.date===today()&&saved.speech?.source){newSession(saved.speech,false);return}
+ return generateSession(dailySettings(),true);
+}
+$("demo").onclick=openDaily;
+$("setup").onsubmit=e=>{
+ e.preventDefault();
+ generateSession({dir,topic,target:Number($("duration").value),difficulty:$("difficulty").value});
+};
+async function refreshMicrophones(selected=read("microphone","")){
+ const select=$("microphone");if(!select)return;
+ try{
+  const devices=await navigator.mediaDevices.enumerateDevices();
+  if(select!==$("microphone"))return;
+  select.replaceChildren(new Option("System default microphone",""));
+  for(const [i,device] of devices.filter(d=>d.kind==="audioinput"&&d.deviceId).entries())
+   select.add(new Option(device.label||"Microphone "+(i+1),device.deviceId));
+  select.value=Array.from(select.options).some(o=>o.value===selected)?selected:"";
+ }catch{}
+}
 function recordingControls(){
  const paused=recorder.state==="paused";
  $("record").disabled=false;
@@ -142,55 +208,79 @@ function recordingControls(){
  if($("sourceSeek"))$("sourceSeek").disabled=!paused;
  status(paused?"Recording paused. Listen to the next passage, then resume recording.":"Recording your interpretation…");
 }
-function finishRecording(){
+async function finishRecording(){
  if(!recorder||recorder.state==="inactive")return;
- recordTimer.pause();
- pauseSource();
- $("record").disabled=true;
- $("finishRecording").hidden=true;
- recorder.stop();
+ const take=recorder,session=attempt;
+ recordTimer.pause();pauseSource();
+ $("record").disabled=true;$("finishRecording").hidden=true;
+ $("micStatus").textContent="Saving microphone audio…";
+ try{
+  const captured=await take.stop();recorder=null;recordTimer=null;
+  session.recordSeconds=captured.seconds;session.blob=captured.blob;
+  session.original="";$("corrected").value="";$("originalBox").hidden=true;
+  if(takeURL)URL.revokeObjectURL(takeURL);
+  takeURL=URL.createObjectURL(captured.blob);
+  const replay=$("replay");replay.src=takeURL;replay.muted=false;replay.volume=1;replay.load();replay.hidden=false;
+  $("record").textContent="● Record again";$("rectime").textContent=clock(session.recordSeconds);
+  $("micLevel").value=0;
+  if(captured.quiet){
+   busyState(false);
+   const message="No usable microphone signal was captured. Select another microphone above, check its mute switch, and record again. The input bar must move when you speak.";
+   $("micStatus").textContent=message;$("transcriptStatus").textContent="No speech signal to transcribe.";status(message);
+   return;
+  }
+  $("micStatus").textContent="Recording ready to replay."+(captured.gain>1.05?" Quiet audio has been amplified.":"");
+  await recognizeTake();
+ }catch(error){
+  recorder=null;recordTimer=null;busyState(false);$("record").textContent="● Start recording";
+  $("micStatus").textContent=error.message;status(error.message);
+ }
 }
 async function record(){
- if(recorder?.state==="recording"){
-  recorder.pause();recordTimer.pause();recordingControls();return;
- }
+ if(recorder?.state==="recording"){recorder.pause();recordTimer.pause();recordingControls();return}
  if(recorder?.state==="paused"){
-  pauseSource();recorder.resume();recordTimer.start();recordingControls();return;
+  pauseSource();
+  try{await recorder.resume();recordTimer.start();recordingControls()}
+  catch(error){notice("Could not resume microphone: "+error.message);await finishRecording()}
+  return;
  }
  if(busy||attempt.saved)return;
  if(attempt.blob&&!confirm("Replace this recording and its transcript?"))return;
- pauseSource();$("replay").pause();busyState(true);let stream;
+ pauseSource();$("replay").pause();busyState(true);$("retryASR").hidden=true;
+ $("micStatus").textContent="Opening microphone…";
  try{
-  if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder)throw Error("Recording requires a microphone and a browser on HTTPS or localhost.");
-  stream=await navigator.mediaDevices.getUserMedia({audio:true});
-  const take=new MediaRecorder(stream),chunks=[],timer=activeTimer();
-  take.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
-  take.start(500);
-  recorder=take;recordTimer=timer;timer.start();recordingControls();
-  const ticker=setInterval(()=>{$("rectime").textContent=clock(timer.seconds())},250);
-  take.onstop=async()=>{
-   clearInterval(ticker);timer.pause();stream.getTracks().forEach(t=>t.stop());
-   recorder=null;recordTimer=null;$("finishRecording").hidden=true;
-   attempt.recordSeconds=timer.seconds();attempt.blob=new Blob(chunks,{type:take.mimeType});
-   attempt.original="";$("corrected").value="";$("originalBox").hidden=true;
-   let quiet=false,conversionFailed=false;
-   try{
-    const decoded=await playableRecording(attempt.blob);
-    attempt.blob=decoded.blob;quiet=decoded.quiet;
-   }catch{conversionFailed=true}
-   if(takeURL)URL.revokeObjectURL(takeURL);
-   takeURL=URL.createObjectURL(attempt.blob);$("replay").src=takeURL;$("replay").load();$("replay").hidden=false;
-   $("record").textContent="● Record again";$("rectime").textContent=clock(attempt.recordSeconds);
-   if(quiet){
-    busyState(false);status("This recording contains almost no sound. Check the microphone input and record again, or type your interpretation.");return;
-   }
-   if(conversionFailed)notice("Your original recording was kept. Seeking may be limited in this browser.");
-   await recognizeTake();
-  };
- }catch(e){stream?.getTracks().forEach(t=>t.stop());busyState(false);status(e.name==="NotAllowedError"?"Microphone access was denied. Allow it in browser settings or type your interpretation below.":e.message+" You can type your interpretation below.")}
+  if(!navigator.mediaDevices?.getUserMedia||!window.AudioWorkletNode)throw Error("Recording requires a microphone and a browser on HTTPS or localhost.");
+  const session=attempt,timer=activeTimer();
+  let lastSignal=performance.now();
+  recorder=await openMicrophone($("microphone").value,(level,seconds)=>{
+   if(attempt!==session)return;
+   $("micLevel").value=Math.min(1,level*8);
+   $("rectime").textContent=clock(seconds);
+   if(level>0.001)lastSignal=performance.now();
+   $("micStatus").textContent=recorder?.state==="paused"?"Recording paused.":
+    performance.now()-lastSignal>3500?"No input detected. Finish, choose another microphone, and check that it is not muted.":
+    "Microphone: "+(recorder?.label||"connecting")+" · "+(level>0.001?"Sound detected":"Speak to check the input bar");
+  },()=>{notice("Microphone disconnected. Finishing the audio captured so far.");finishRecording()});
+  recordTimer=timer;timer.start();recordingControls();
+  refreshMicrophones(recorder.deviceId);
+ }catch(error){
+  recorder=null;busyState(false);
+  const message=error.name==="NotAllowedError"?"Microphone access was denied. Allow it in browser settings or type your interpretation below.":error.message+" You can type your interpretation below.";
+  $("micStatus").textContent=message;status(message);
+ }
 }
-async function recognizeTake(){busyState(true);try{const text=await transcribe(attempt.blob,attempt.dir,status);if(!text)throw Error("No speech detected.");attempt.original=text;$("corrected").value=text;$("originalText").textContent=text;$("originalBox").hidden=false;$("retryASR").hidden=true;status("Check the transcript before assessment.")}
- catch(e){$("retryASR").hidden=false;status("Transcription unavailable. "+e.message+" Replay your recording and enter the transcript manually.")}finally{busyState(false)}}
+async function recognizeTake(){
+ const session=attempt;busyState(true);$("retryASR").hidden=true;
+ const report=text=>{if(attempt===session){$("transcriptStatus").textContent=text;status(text)}};
+ try{
+  const text=await transcribe(session.blob,session.dir,report);
+  if(!text)throw Error("No speech detected.");
+  session.original=text;$("corrected").value=text;$("originalText").textContent=text;$("originalBox").hidden=false;
+  report("Automatic transcript ready. Correct any recognition errors before assessment.");
+ }catch(error){
+  $("retryASR").hidden=false;report("Transcription unavailable. "+error.message+" Your audio is kept; retry or enter the transcript manually.");
+ }finally{busyState(false)}
+}
 async function evaluate(){
  if(attempt.saved)return showReport(attempt);
  const transcript=$("corrected").value.trim();if(!transcript){status("Enter or record an interpretation first.");$("corrected").focus();return}
@@ -201,4 +291,5 @@ async function evaluate(){
 $("date").textContent=new Intl.DateTimeFormat("en",{weekday:"short",month:"short",day:"numeric"}).format(new Date());
 window.addEventListener("storage",e=>{if(e.key==="relay-history"){records=read("history",[]);route()}});
 controls();route();
+if(!location.hash||location.hash==="#studio")openDaily();
 
