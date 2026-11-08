@@ -5,7 +5,7 @@ import {openMicrophone,microphoneProblem} from "./microphone.js";
 import {cachedTimedNarration,prepareTimedSpeech} from "./timed-narration.js";
 import {playableRecording} from "./recording.js";
 import {cancelNarration} from "./narration.js";
-let narrationURL="",voiceJob=null;
+let narrationURL="",voiceJob=null,micTestURL="";
 const $=id=>document.getElementById(id);
 function read(key,fallback){try{return JSON.parse(localStorage.getItem("relay-"+key))??fallback}catch{return fallback}}
 function write(key,value){localStorage.setItem("relay-"+key,JSON.stringify(value))}
@@ -27,12 +27,13 @@ function pauseSource(){
  speechRun?.pause();
 }
 function stopSpeech(){
- speechRun?.stop();$("sampleAudio")?.pause();$("replay")?.pause();
+ speechRun?.stop();$("sampleAudio")?.pause();$("replay")?.pause();$("micTestReplay")?.pause();
 }
 function discard(){if(recorder||busy||voiceJob){notice("Finish the current operation first.");return false}
  if(attempt&&!attempt.saved&&(attempt.blob||$("corrected")?.value.trim())&&!confirm("Start a new session and discard the unsaved attempt?"))return false;
  stopSpeech();voiceJob=null;cancelNarration();
  if(narrationURL)URL.revokeObjectURL(narrationURL);narrationURL="";
+ if(micTestURL)URL.revokeObjectURL(micTestURL);micTestURL="";
  if(takeURL)URL.revokeObjectURL(takeURL);takeURL="";attempt=null;speechRun=null;return true;}
 const svg=document.querySelector(".waves"),ns="http://www.w3.org/2000/svg";
 for(let i=0;i<73;i++){const path=document.createElementNS(ns,"path");let d="";
@@ -127,7 +128,7 @@ function hero(speech){
 function newSession(speech,scroll=true){
  attempt={...speech,id:crypto.randomUUID(),original:"",recordSeconds:0,listenSeconds:0,speechSeconds:null,blob:null,saved:false};
  hero(speech);
- $("session").hidden=false;$("session").innerHTML=`<small class="kicker">${esc(speech.mode.toUpperCase())}</small><h2>${esc(speech.title)}</h2><div class="wrap"><button id="regenerate" class="regenerate">↻ Regenerate</button><button id="easier" class="regenerate" ${speech.difficulty==="Beginner"?"disabled":""}>− 简单一点</button><button id="harder" class="regenerate" ${speech.difficulty==="Advanced"?"disabled":""}>+ 难一点</button></div><p class="meta">${esc(speech.topic)}${speech.difficulty?" · "+esc(speech.difficulty):""} · ${directionName(speech.dir)} · Target ${clock(speech.target)}${speech.estimatedSeconds?" · Estimated "+clock(speech.estimatedSeconds)+" at 1×":""}</p><div class="block"><h3>1. Listen to the source</h3>${speech.mode==="Classroom demo"?`<audio id="sampleAudio" controls preload="metadata" src="./commute-${speech.dir}.wav"></audio>`:`<button class="action" id="naturalVoice">Prepare natural voice</button> <button id="sourcePlay">▶ Play speech</button>`}<label class="speedControl">Playback speed <select id="playbackSpeed">${[0.75,1,1.25,1.5,2].map(rate=>`<option value="${rate}" ${rate===1?"selected":""}>${rate}×</option>`).join("")}</select></label>${speech.mode==="Classroom demo"?"":`<input type="range" id="sourceSeek" class="sourceSeek" aria-label="Source playback position" min="0" value="0" step="1">`}<p class="note" id="playtime"></p>${speech.mode==="Classroom demo"?"":`<p class="note" id="voiceStatus" role="status">Prepare verifies the actual audio against your target at 1×. Short or long manuscripts are rewritten; system playback is an untimed preview. First use saves a voice model (about 340 MB).</p>`}<details><summary>Reveal manuscript</summary><p id="manuscript">${esc(speech.source)}</p></details></div><div class="block sectionrule"><h3>2. Record your interpretation</h3><p class="note">Interpret into ${speech.dir==="en"?"Mandarin":"English"}. You can also enter your interpretation below.</p><label class="micChoice">Microphone <select id="microphone" aria-label="Microphone"><option value="">System default microphone</option></select></label><button id="testMic">Test microphone · 5s</button><div class="micMonitor"><meter id="micLevel" min="0" max="1" value="0" aria-label="Microphone input level"></meter><p id="micStatus" class="note" role="status">Speak after starting: the input bar should move.</p></div><details id="micHelp"><summary>Microphone connection &amp; help</summary><p id="micDiagnostics" class="note">Permission and input status appear after a test.</p><p class="note">In an embedded Codex / ChatGPT window, test this same link in standalone Edge or Chrome if no input arrives. Allow microphone access in both the browser and Windows Settings → Privacy &amp; security → Microphone, including desktop apps.</p><button id="copySiteLink">Copy link for Edge / Chrome</button></details><label class="micChoice">Or upload a recording <input id="uploadRecording" type="file" accept="audio/*"></label><div class="wrap block"><button id="record">● &nbsp; Start recording</button><button id="finishRecording" hidden>■ Finish recording</button><span id="rectime" class="note"></span></div><audio hidden id="replay" controls></audio><button id="retryASR" hidden>Retry transcription</button></div><div class="block sectionrule"><h3>3. Review and assess</h3><label for="corrected" class="field">Your reviewed transcript</label><p id="transcriptStatus" class="note" role="status">Finish a recording to transcribe it automatically.</p><textarea id="corrected" rows="5" placeholder="Your transcript appears here. You can correct recognition errors before assessment."></textarea><details id="originalBox" hidden><summary>Original transcription</summary><p id="originalText"></p></details><button class="action" id="evaluate">Assess and save attempt</button></div><div role="status" class="sessionstatus" id="sessionstatus"></div>`;
+ $("session").hidden=false;$("session").innerHTML=`<small class="kicker">${esc(speech.mode.toUpperCase())}</small><h2>${esc(speech.title)}</h2><div class="wrap"><button id="regenerate" class="regenerate">↻ Regenerate</button><button id="easier" class="regenerate" ${speech.difficulty==="Beginner"?"disabled":""}>− 简单一点</button><button id="harder" class="regenerate" ${speech.difficulty==="Advanced"?"disabled":""}>+ 难一点</button></div><p class="meta">${esc(speech.topic)}${speech.difficulty?" · "+esc(speech.difficulty):""} · ${directionName(speech.dir)} · Target ${clock(speech.target)}${speech.estimatedSeconds?" · Estimated "+clock(speech.estimatedSeconds)+" at 1×":""}</p><div class="block"><h3>1. Listen to the source</h3>${speech.mode==="Classroom demo"?`<audio id="sampleAudio" controls preload="metadata" src="./commute-${speech.dir}.wav"></audio>`:`<button class="action" id="naturalVoice">Prepare natural voice</button> <button id="sourcePlay">▶ Play speech</button>`}<label class="speedControl">Playback speed <select id="playbackSpeed">${[0.75,1,1.25,1.5,2].map(rate=>`<option value="${rate}" ${rate===1?"selected":""}>${rate}×</option>`).join("")}</select></label>${speech.mode==="Classroom demo"?"":`<input type="range" id="sourceSeek" class="sourceSeek" aria-label="Source playback position" min="0" value="0" step="1">`}<p class="note" id="playtime"></p>${speech.mode==="Classroom demo"?"":`<p class="note" id="voiceStatus" role="status">Prepare verifies the actual audio against your target at 1×. Short or long manuscripts are rewritten; system playback is an untimed preview. First use saves a voice model (about 340 MB).</p>`}<details><summary>Reveal manuscript</summary><p id="manuscript">${esc(speech.source)}</p></details></div><div class="block sectionrule"><h3>2. Record your interpretation</h3><p class="note">Interpret into ${speech.dir==="en"?"Mandarin":"English"}. You can also enter your interpretation below.</p><label class="micChoice">Microphone <select id="microphone" aria-label="Microphone"><option value="">System default microphone</option></select></label><button id="testMic">Test microphone · 5s</button><div class="micMonitor"><meter id="micLevel" min="0" max="1" value="0" aria-label="Microphone input level"></meter><p id="micStatus" class="note" role="status">Speak after starting: the input bar should move.</p></div><div id="micTestResult" hidden><p class="note">Your five-second microphone test · replay to check your voice</p><audio id="micTestReplay" controls aria-label="Microphone test recording"></audio></div><details id="micHelp"><summary>Microphone connection &amp; help</summary><p id="micDiagnostics" class="note">Permission and input status appear after a test.</p><p class="note">In an embedded Codex / ChatGPT window, test this same link in standalone Edge or Chrome if no input arrives. Allow microphone access in both the browser and Windows Settings → Privacy &amp; security → Microphone, including desktop apps.</p><button id="copySiteLink">Copy link for Edge / Chrome</button></details><label class="micChoice">Or upload a recording <input id="uploadRecording" type="file" accept="audio/*"></label><div class="wrap block"><button id="record">● &nbsp; Start recording</button><button id="finishRecording" hidden>■ Finish recording</button><span id="rectime" class="note"></span></div><audio hidden id="replay" controls></audio><button id="retryASR" hidden>Retry transcription</button></div><div class="block sectionrule"><h3>3. Review and assess</h3><label for="corrected" class="field">Your reviewed transcript</label><p id="transcriptStatus" class="note" role="status">Finish a recording to transcribe it automatically.</p><textarea id="corrected" rows="5" placeholder="Your transcript appears here. You can correct recognition errors before assessment."></textarea><details id="originalBox" hidden><summary>Original transcription</summary><p id="originalText"></p></details><button class="action" id="evaluate">Assess and save attempt</button></div><div role="status" class="sessionstatus" id="sessionstatus"></div>`;
  $("playbackSpeed").onchange=()=>{
   const audio=$("sampleAudio");
   if(audio)audio.playbackRate=Number($("playbackSpeed").value);
@@ -222,7 +223,8 @@ function micDiagnostics(data){
 }
 async function testMicrophone(){
  if(busy||voiceJob||recorder)return;
- pauseSource();$("replay").pause();busyState(true);
+ pauseSource();$("replay").pause();$("micTestReplay").pause();busyState(true);
+ $("micTestResult").hidden=true;
  $("micHelp").open=true;$("micStatus").textContent="Allow microphone permission, then speak for five seconds.";
  let test;
  try{
@@ -233,9 +235,15 @@ async function testMicrophone(){
   await refreshMicrophones(test.deviceId);
   await new Promise(resolve=>setTimeout(resolve,5000));
   const capture=await test.stop();
+  if(micTestURL)URL.revokeObjectURL(micTestURL);
+  micTestURL=URL.createObjectURL(capture.blob);
+  const playback=$("micTestReplay");playback.src=micTestURL;playback.muted=false;playback.volume=1;playback.load();
+  $("micTestResult").hidden=false;
+  $("micDiagnostics").textContent+=" · Captured peak: "+capture.peak.toFixed(6)+" · RMS: "+capture.rms.toFixed(6)+
+   " · Selected capture: "+(capture.compatibility?"native recorder":"audio worklet");
   $("micStatus").textContent=capture.quiet?
-   "Test failed: a device opened, but both recording paths received silence. Check Windows Settings → System → Sound → Input: select the microphone, check its input volume and mute switch, and test it with Windows Sound Recorder. If Sound Recorder works, compare this website’s selected microphone and permission. You can upload that recording below.":
-   "Microphone test passed: audio was captured"+(capture.compatibility?" through the compatibility recorder.":".")+" You can start your interpretation.";
+   "Test failed: a device opened, but the captured audio contains no usable sound. Check Windows Settings → System → Sound → Input: select the microphone, check its input volume and mute switch, and test it with Windows Sound Recorder. If Sound Recorder works, compare this website’s selected microphone and permission. You can upload that recording below.":
+   "Microphone test passed: audio was captured"+(capture.compatibility?" through the compatibility recorder.":".")+" Replay the test below to confirm you can hear your voice, then start your interpretation.";
  }catch(error){$("micStatus").textContent=microphoneProblem(error)}
  finally{$("micLevel").value=0;busyState(false)}
 }
@@ -305,7 +313,7 @@ async function record(){
  }
  if(busy||attempt.saved)return;
  if(attempt.blob&&!confirm("Replace this recording and its transcript?"))return;
- pauseSource();$("replay").pause();busyState(true);$("retryASR").hidden=true;
+ pauseSource();$("replay").pause();$("micTestReplay").pause();busyState(true);$("retryASR").hidden=true;
  $("micStatus").textContent="Opening microphone…";$("replay").hidden=true;
  $("transcriptStatus").textContent="Finish recording to create the automatic transcript.";
  try{

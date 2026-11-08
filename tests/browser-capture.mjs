@@ -22,6 +22,15 @@ try{
   assert.ok(await page.evaluate(()=>navigator.mediaDevices.getUserMedia.toString().includes("[native code]")));
   await page.locator("#testMic").click();
   await page.waitForFunction(()=>document.querySelector("#micStatus").textContent.includes("test passed"),null,{timeout:15000});
+  const testAudio=await page.locator("#micTestReplay").evaluate(async a=>{
+   const c=new AudioContext(),b=await c.decodeAudioData(await (await fetch(a.src)).arrayBuffer());await c.close();
+   let peak=0;for(const v of b.getChannelData(0))peak=Math.max(peak,Math.abs(v));
+   await a.play();await new Promise(r=>setTimeout(r,150));a.pause();
+   return {duration:b.duration,peak,position:a.currentTime,muted:a.muted,volume:a.volume};
+  });
+  assert.ok(testAudio.duration>4&&testAudio.duration<7&&testAudio.peak>0.02&&testAudio.position>0);
+  assert.equal(testAudio.muted,false);assert.equal(testAudio.volume,1);
+  assert.equal(await page.locator("#corrected").inputValue(),"","A microphone test must not replace the practice transcript");
   if(compatibility)assert.match(await page.locator("#micStatus").innerText(),/compatibility recorder/);
   await page.locator("#record").click();
   await page.waitForFunction(()=>document.querySelector("#micLevel").value>0.001);
