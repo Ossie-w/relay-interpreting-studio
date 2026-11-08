@@ -79,7 +79,7 @@ await page.route("https://esm.run/@mlc-ai/web-llm@0.2.79",r=>r.fulfill({contentT
    await (await caches.open("qa-model")).put("/qa-model-file",new Response("fixture"));
   }
   options.initProgressCallback({text:"Loading model from cache",progress:1});
-  return {chat:{completions:{create:async(request)=>{window.testPrompt=request.messages.at(-1).content;return {choices:[{message:{content:JSON.stringify({title:"Test",ideas:window.drafts?.shift()??["speech ".repeat(128)]})}}]}}}}};
+  return {chat:{completions:{create:async(request)=>{window.testPrompt=request.messages.at(-1).content;return {choices:[{message:{content:JSON.stringify({title:"Test",ideas:window.drafts?.shift()??["speech ".repeat(153)]})}}]}}}}};
  }`}));
 await page.goto(origin+"/#studio");
 for(const [warm,level] of [[false,"Beginner"],[true,"Intermediate"],[false,"Advanced"]]){
@@ -93,10 +93,10 @@ for(const [warm,level] of [[false,"Beginner"],[true,"Intermediate"],[false,"Adva
  const messages=await page.evaluate(()=>statusMessages);
  assert.equal(messages.some(m=>m.includes("2 GB")),!warm);
 }
-// Reproduce two off-target drafts and check the usable manuscript that reaches playback.
+// Off-target drafts must be revised before the manuscript reaches playback.
 for(const [dir,unit,draftLengths,expectedLength] of [
- ["en","speech ",[40,85],85],
- ["zh","车",[330,360],330]
+ ["en","speech ",[40,85,68],153],
+ ["zh","车",[330,240],240]
 ]){
  await page.locator('[data-dir="'+dir+'"]').click();
  await page.locator("#difficulty").selectOption("Beginner");
@@ -105,13 +105,14 @@ for(const [dir,unit,draftLengths,expectedLength] of [
  },{unit,draftLengths});
  await page.locator("#generate").click();
  await page.waitForFunction(()=>!document.querySelector("#generate").disabled && (document.querySelector("#sourcePlay")||document.querySelector("#sessionstatus")?.textContent.startsWith("Generation unavailable")));
- assert.ok(await page.locator("#sourcePlay").count(),"Off-target length should still yield a practice session");
- assert.ok((await page.locator("#session details p").first().textContent()).includes(unit.repeat(expectedLength).trim()));
+ assert.ok(await page.locator("#sourcePlay").count(),"Revision should yield a manuscript within the required length");
+ assert.ok((await page.locator("#session details p").first().textContent()).includes(unit.repeat(dir==="en"?85:expectedLength).trim()));
  assert.match(await page.locator("#session .meta").textContent(),/Estimated/);
 }
 // Replace the model boundary only in this browser test. Exercise the real UI and storage.
 await page.route("**/ai.js",r=>r.fulfill({contentType:"text/javascript",body:`
 export async function generateSpeech(dir,topic,target){return {dir,topic,target,title:"QA session",source:"Source passage",ideas:["First sentence. Second sentence."],mode:"AI-generated"}}
+export async function reviseSpeechDuration(s){return s}
 export async function transcribe(){return "Recognized words"}
 export async function assess(s,t){return {score:100,rows:[{source:s.source,evidence:t,points:1,reason:"Test"}],suggestion:"Practice the number."}}`}));
 await page.goto(origin+"/#studio");await page.reload();

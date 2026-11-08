@@ -1,8 +1,10 @@
 import {topics,weekdays,defaultPlan,directionName,clock,localDate,score,escapeHTML as esc,demoSpeech,example} from "./practice.js";
-import {generateSpeech,assess,transcribe} from "./ai.js";
+import {generateSpeech,reviseSpeechDuration,assess,transcribe} from "./ai.js";
 import {sourcePlayer} from "./playback.js";
-import {openMicrophone} from "./microphone.js";
-import {cachedNarration,renderNarration,cancelNarration} from "./narration.js";
+import {openMicrophone,microphoneProblem} from "./microphone.js";
+import {cachedTimedNarration,prepareTimedSpeech} from "./timed-narration.js";
+import {playableRecording} from "./recording.js";
+import {cancelNarration} from "./narration.js";
 let narrationURL="",voiceJob=null;
 const $=id=>document.getElementById(id);
 function read(key,fallback){try{return JSON.parse(localStorage.getItem("relay-"+key))??fallback}catch{return fallback}}
@@ -11,7 +13,7 @@ let plan=read("plan",defaultPlan),records=read("history",[]),dir=plan.direction,
 const today=()=>localDate(new Date());
 function notice(msg){$("notice").textContent=msg;clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>$("notice").textContent="",6500)}
 function status(s){const node=$("sessionstatus");if(node) node.textContent=s}
-function busyState(value){busy=value;for(const id of ["generate","demo","record","evaluate","retryASR","sourcePlay","finishSession","regenerate","microphone","offlineExercise"])if($(id))$(id).disabled=value;if($("corrected"))$("corrected").disabled=value;if($("sampleAudio"))$("sampleAudio").controls=!value;if($("sourceSeek"))$("sourceSeek").disabled=value;}
+function busyState(value){busy=value;for(const id of ["generate","demo","record","evaluate","retryASR","sourcePlay","finishSession","regenerate","easier","harder","testMic","uploadRecording","microphone","offlineExercise"])if($(id))$(id).disabled=value;if($("corrected"))$("corrected").disabled=value;if($("sampleAudio"))$("sampleAudio").controls=!value;if($("sourceSeek"))$("sourceSeek").disabled=value;if($("uploadRecording"))$("uploadRecording").disabled=value||!!attempt?.saved;if($("easier"))$("easier").disabled=value||attempt?.difficulty==="Beginner";if($("harder"))$("harder").disabled=value||attempt?.difficulty==="Advanced";}
 function activeTimer(){
  let elapsed=0, since=null;
  return {
@@ -27,7 +29,7 @@ function pauseSource(){
 function stopSpeech(){
  speechRun?.stop();$("sampleAudio")?.pause();$("replay")?.pause();
 }
-function discard(){if(recorder||busy){notice("Finish the current operation first.");return false}
+function discard(){if(recorder||busy||voiceJob){notice("Finish the current operation first.");return false}
  if(attempt&&!attempt.saved&&(attempt.blob||$("corrected")?.value.trim())&&!confirm("Start a new session and discard the unsaved attempt?"))return false;
  stopSpeech();voiceJob=null;cancelNarration();
  if(narrationURL)URL.revokeObjectURL(narrationURL);narrationURL="";
@@ -89,25 +91,32 @@ function mountNarration(session,blob,message){
  $("voiceStatus").textContent=message;
 }
 async function prepareNarration(session){
+ if(!voiceJob&&(busy||session.blob||$("corrected").value.trim())){notice("Prepare the timed source audio before recording or entering your interpretation.");return}
  const button=$("naturalVoice"),message=$("voiceStatus");
  if(voiceJob){
   voiceJob=null;cancelNarration();button.textContent="Prepare natural voice";
-  message.textContent="Preparation cancelled. Saved model files are kept.";return;
+  message.textContent="Preparation cancelled. Saved model files are kept.";busyState(false);return;
  }
- const job={};voiceJob=job;button.textContent="Cancel preparation";
+ const job={};voiceJob=job;busyState(true);button.textContent="Cancel preparation";
  try{
-  const result=await renderNarration(session.source,session.dir,text=>{
+  const result=await prepareTimedSpeech(session,text=>{
    if(voiceJob===job&&attempt===session)message.textContent=text;
-  });
+  },reviseSpeechDuration,()=>voiceJob===job&&attempt===session);
   if(voiceJob!==job||attempt!==session)return;
+  Object.assign(session,result.speech);
+  $("session").querySelector("h2").textContent=session.title;
+  $("manuscript").textContent=session.source;
+  $("session").querySelector(".meta").textContent=session.topic+" · "+session.difficulty+" · "+directionName(session.dir)+" · Target "+clock(session.target)+" · Verified at 1×";
+  hero(session);
+  try{write("daily",{date:today(),speech:result.speech})}catch{}
   mountNarration(session,result.blob,(result.reused?"Saved natural voice restored. Ready to play.":
    result.saved?"Natural voice ready and saved in this browser.":"Natural voice ready. Browser storage is unavailable; this track lasts for this session.")+(result.warning?" "+result.warning:""));
  }catch(error){
   if(voiceJob===job&&attempt===session){
    button.textContent="Prepare natural voice";
-   message.textContent="Natural voice unavailable. You can use Play speech. "+error.message;
+   message.textContent="Timed natural voice unavailable. You can use the untimed system preview. "+error.message;
   }
- }finally{if(voiceJob===job)voiceJob=null}
+ }finally{if(voiceJob===job){voiceJob=null;busyState(false)}}
 }
 function hero(speech){
  $("heroLabel").textContent=speech.mode==="Classroom demo"?"OFFLINE PRACTICE":"TODAY’S PRACTICE";
@@ -118,7 +127,7 @@ function hero(speech){
 function newSession(speech,scroll=true){
  attempt={...speech,id:crypto.randomUUID(),original:"",recordSeconds:0,listenSeconds:0,speechSeconds:null,blob:null,saved:false};
  hero(speech);
- $("session").hidden=false;$("session").innerHTML=`<small class="kicker">${esc(speech.mode.toUpperCase())}</small><h2>${esc(speech.title)}</h2><button id="regenerate" class="regenerate">↻ Regenerate</button><p class="meta">${esc(speech.topic)}${speech.difficulty?" · "+esc(speech.difficulty):""} · ${directionName(speech.dir)} · Target ${clock(speech.target)}${speech.estimatedSeconds?" · Estimated "+clock(speech.estimatedSeconds)+" at 1×":""}</p><div class="block"><h3>1. Listen to the source</h3>${speech.mode==="Classroom demo"?`<audio id="sampleAudio" controls preload="metadata" src="./commute-${speech.dir}.wav"></audio>`:`<button class="action" id="naturalVoice">Prepare natural voice</button> <button id="sourcePlay">▶ Play speech</button>`}<label class="speedControl">Playback speed <select id="playbackSpeed">${[0.75,1,1.25,1.5,2].map(rate=>`<option value="${rate}" ${rate===1?"selected":""}>${rate}×</option>`).join("")}</select></label>${speech.mode==="Classroom demo"?"":`<input type="range" id="sourceSeek" class="sourceSeek" aria-label="Source playback position" min="0" value="0" step="1">`}<p class="note" id="playtime"></p>${speech.mode==="Classroom demo"?"":`<p class="note" id="voiceStatus" role="status">First use saves a voice model (about 340 MB). New manuscripts need synthesis; saved tracks reopen immediately.</p>`}<details><summary>Reveal manuscript</summary><p>${esc(speech.source)}</p></details></div><div class="block sectionrule"><h3>2. Record your interpretation</h3><p class="note">Interpret into ${speech.dir==="en"?"Mandarin":"English"}. You can also enter your interpretation below.</p><label class="micChoice">Microphone <select id="microphone" aria-label="Microphone"><option value="">System default microphone</option></select></label><div class="micMonitor"><meter id="micLevel" min="0" max="1" value="0" aria-label="Microphone input level"></meter><p id="micStatus" class="note" role="status">Speak after starting: the input bar should move.</p></div><div class="wrap block"><button id="record">● &nbsp; Start recording</button><button id="finishRecording" hidden>■ Finish recording</button><span id="rectime" class="note"></span></div><audio hidden id="replay" controls></audio><button id="retryASR" hidden>Retry transcription</button></div><div class="block sectionrule"><h3>3. Review and assess</h3><label for="corrected" class="field">Your reviewed transcript</label><p id="transcriptStatus" class="note" role="status">Finish a recording to transcribe it automatically.</p><textarea id="corrected" rows="5" placeholder="Your transcript appears here. You can correct recognition errors before assessment."></textarea><details id="originalBox" hidden><summary>Original transcription</summary><p id="originalText"></p></details><button class="action" id="evaluate">Assess and save attempt</button></div><div role="status" class="sessionstatus" id="sessionstatus"></div>`;
+ $("session").hidden=false;$("session").innerHTML=`<small class="kicker">${esc(speech.mode.toUpperCase())}</small><h2>${esc(speech.title)}</h2><div class="wrap"><button id="regenerate" class="regenerate">↻ Regenerate</button><button id="easier" class="regenerate" ${speech.difficulty==="Beginner"?"disabled":""}>− 简单一点</button><button id="harder" class="regenerate" ${speech.difficulty==="Advanced"?"disabled":""}>+ 难一点</button></div><p class="meta">${esc(speech.topic)}${speech.difficulty?" · "+esc(speech.difficulty):""} · ${directionName(speech.dir)} · Target ${clock(speech.target)}${speech.estimatedSeconds?" · Estimated "+clock(speech.estimatedSeconds)+" at 1×":""}</p><div class="block"><h3>1. Listen to the source</h3>${speech.mode==="Classroom demo"?`<audio id="sampleAudio" controls preload="metadata" src="./commute-${speech.dir}.wav"></audio>`:`<button class="action" id="naturalVoice">Prepare natural voice</button> <button id="sourcePlay">▶ Play speech</button>`}<label class="speedControl">Playback speed <select id="playbackSpeed">${[0.75,1,1.25,1.5,2].map(rate=>`<option value="${rate}" ${rate===1?"selected":""}>${rate}×</option>`).join("")}</select></label>${speech.mode==="Classroom demo"?"":`<input type="range" id="sourceSeek" class="sourceSeek" aria-label="Source playback position" min="0" value="0" step="1">`}<p class="note" id="playtime"></p>${speech.mode==="Classroom demo"?"":`<p class="note" id="voiceStatus" role="status">Prepare verifies the actual audio against your target at 1×. Short or long manuscripts are rewritten; system playback is an untimed preview. First use saves a voice model (about 340 MB).</p>`}<details><summary>Reveal manuscript</summary><p id="manuscript">${esc(speech.source)}</p></details></div><div class="block sectionrule"><h3>2. Record your interpretation</h3><p class="note">Interpret into ${speech.dir==="en"?"Mandarin":"English"}. You can also enter your interpretation below.</p><label class="micChoice">Microphone <select id="microphone" aria-label="Microphone"><option value="">System default microphone</option></select></label><button id="testMic">Test microphone · 5s</button><div class="micMonitor"><meter id="micLevel" min="0" max="1" value="0" aria-label="Microphone input level"></meter><p id="micStatus" class="note" role="status">Speak after starting: the input bar should move.</p></div><details id="micHelp"><summary>Microphone connection &amp; help</summary><p id="micDiagnostics" class="note">Permission and input status appear after a test.</p><p class="note">In an embedded Codex / ChatGPT window, test this same link in standalone Edge or Chrome if no input arrives. Allow microphone access in both the browser and Windows Settings → Privacy &amp; security → Microphone, including desktop apps.</p><button id="copySiteLink">Copy link for Edge / Chrome</button></details><label class="micChoice">Or upload a recording <input id="uploadRecording" type="file" accept="audio/*"></label><div class="wrap block"><button id="record">● &nbsp; Start recording</button><button id="finishRecording" hidden>■ Finish recording</button><span id="rectime" class="note"></span></div><audio hidden id="replay" controls></audio><button id="retryASR" hidden>Retry transcription</button></div><div class="block sectionrule"><h3>3. Review and assess</h3><label for="corrected" class="field">Your reviewed transcript</label><p id="transcriptStatus" class="note" role="status">Finish a recording to transcribe it automatically.</p><textarea id="corrected" rows="5" placeholder="Your transcript appears here. You can correct recognition errors before assessment."></textarea><details id="originalBox" hidden><summary>Original transcription</summary><p id="originalText"></p></details><button class="action" id="evaluate">Assess and save attempt</button></div><div role="status" class="sessionstatus" id="sessionstatus"></div>`;
  $("playbackSpeed").onchange=()=>{
   const audio=$("sampleAudio");
   if(audio)audio.playbackRate=Number($("playbackSpeed").value);
@@ -129,7 +138,7 @@ function newSession(speech,scroll=true){
  }else{
   const session=attempt;
   $("naturalVoice").onclick=()=>prepareNarration(session);
-  cachedNarration(session.source,session.dir).then(blob=>{
+  cachedTimedNarration(session).then(blob=>{
    if(blob&&attempt===session&&!voiceJob)mountNarration(session,blob,"Saved natural voice restored. Ready to play.");
   });
   window.speechSynthesis?.getVoices();
@@ -146,13 +155,20 @@ function newSession(speech,scroll=true){
  }
  refreshMicrophones();
  $("microphone").onchange=()=>{try{write("microphone",$("microphone").value)}catch{}};
- $("regenerate").onclick=()=>generateSession({dir:attempt.dir,topic:attempt.topic,target:attempt.target,difficulty:attempt.difficulty||"Beginner"});
+ const regenerate=delta=>{
+  const levels=["Beginner","Intermediate","Advanced"],level=Math.max(0,levels.indexOf(attempt.difficulty));
+  generateSession({dir:attempt.dir,topic:attempt.topic,target:attempt.target,difficulty:levels[Math.max(0,Math.min(2,level+delta))]});
+ };
+ $("regenerate").onclick=()=>regenerate(0);$("easier").onclick=()=>regenerate(-1);$("harder").onclick=()=>regenerate(1);
+ $("testMic").onclick=testMicrophone;
+ $("uploadRecording").onchange=uploadRecording;
+ $("copySiteLink").onclick=async()=>{try{await navigator.clipboard.writeText(location.origin+"/");notice("Link copied. Paste it into standalone Edge or Chrome.")}catch{notice("Copy the address from your browser’s address bar.")}};
  $("finishRecording").onclick=finishRecording;$("record").onclick=record;$("retryASR").onclick=()=>recognizeTake();$("evaluate").onclick=evaluate;
  if(scroll)$("session").scrollIntoView({behavior:"smooth",block:"start"});
 }
 async function generateSession(settings,isDaily=false){
  // Keep the current exercise until its replacement succeeds.
- if(recorder||busy)return notice("Finish the current operation first.");
+ if(recorder||busy||voiceJob)return notice("Finish the current operation first.");
  if(attempt&&!attempt.saved&&(attempt.blob||$("corrected")?.value.trim())&&!confirm("Generate a new exercise and discard the unsaved attempt?"))return;
  stopSpeech();busyState(true);
  const report=text=>{status(text);$("heroDescription").textContent=text};
@@ -198,6 +214,49 @@ async function refreshMicrophones(selected=read("microphone","")){
   select.value=Array.from(select.options).some(o=>o.value===selected)?selected:"";
  }catch{}
 }
+function micDiagnostics(data){
+ if(!data)return;
+ $("micDiagnostics").textContent="Last input check · Permission: "+data.permission+" · Input track: "+data.track+
+  (data.muted?" (muted)":"")+" · Audio engine: "+data.context+" · Native recorder: "+data.native+
+  " · Captured frames: "+data.frames;
+}
+async function testMicrophone(){
+ if(busy||voiceJob||recorder)return;
+ pauseSource();$("replay").pause();busyState(true);
+ $("micHelp").open=true;$("micStatus").textContent="Allow microphone permission, then speak for five seconds.";
+ let test;
+ try{
+  test=await openMicrophone($("microphone").value,(level,seconds,details)=>{
+   $("micLevel").value=Math.min(1,level*8);micDiagnostics(details);
+   $("micStatus").textContent="Speak now · "+Math.max(0,5-Math.floor(seconds))+"s remaining";
+  },()=>{});
+  await refreshMicrophones(test.deviceId);
+  await new Promise(resolve=>setTimeout(resolve,5000));
+  const capture=await test.stop();
+  $("micStatus").textContent=capture.quiet?
+   "Test failed: a device opened, but both recording paths received silence. Check Windows Settings → System → Sound → Input: select the microphone, check its input volume and mute switch, and test it with Windows Sound Recorder. If Sound Recorder works, compare this website’s selected microphone and permission. You can upload that recording below.":
+   "Microphone test passed: audio was captured"+(capture.compatibility?" through the compatibility recorder.":".")+" You can start your interpretation.";
+ }catch(error){$("micStatus").textContent=microphoneProblem(error)}
+ finally{$("micLevel").value=0;busyState(false)}
+}
+async function uploadRecording(event){
+ const file=event.target.files[0];if(!file||busy||recorder||voiceJob||attempt.saved)return;
+ if((attempt.blob||$("corrected").value.trim())&&!confirm("Replace this recording and its transcript?")){event.target.value="";return}
+ busyState(true);pauseSource();
+ try{
+  const decoded=await playableRecording(file);
+  if(decoded.quiet)throw Error("The uploaded file contains no usable sound.");
+  const context=new AudioContext();let audio;
+  try{audio=await context.decodeAudioData(await decoded.blob.arrayBuffer())}finally{await context.close()}
+  attempt.blob=decoded.blob;attempt.recordSeconds=audio.duration;attempt.original="";
+  $("corrected").value="";$("originalBox").hidden=true;
+  if(takeURL)URL.revokeObjectURL(takeURL);takeURL=URL.createObjectURL(attempt.blob);
+  $("replay").src=takeURL;$("replay").hidden=false;$("replay").load();
+  $("rectime").textContent=clock(audio.duration);$("micStatus").textContent="Uploaded recording ready.";
+  await recognizeTake();
+ }catch(error){$("micStatus").textContent="Could not import audio: "+error.message}
+ finally{event.target.value="";busyState(false)}
+}
 function recordingControls(){
  const paused=recorder.state==="paused";
  $("record").disabled=false;
@@ -224,8 +283,8 @@ async function finishRecording(){
   $("record").textContent="● Record again";$("rectime").textContent=clock(session.recordSeconds);
   $("micLevel").value=0;
   if(captured.quiet){
-   busyState(false);
-   const message="No usable microphone signal was captured. Select another microphone above, check its mute switch, and record again. The input bar must move when you speak.";
+   busyState(false);$("micHelp").open=true;
+   const message="No usable microphone signal was captured. Run Test microphone and check the same input in Windows Sound Recorder. A listed device does not prove that sound is reaching the browser. You can also upload a recording.";
    $("micStatus").textContent=message;$("transcriptStatus").textContent="No speech signal to transcribe.";status(message);
    return;
   }
@@ -247,25 +306,30 @@ async function record(){
  if(busy||attempt.saved)return;
  if(attempt.blob&&!confirm("Replace this recording and its transcript?"))return;
  pauseSource();$("replay").pause();busyState(true);$("retryASR").hidden=true;
- $("micStatus").textContent="Opening microphone…";
+ $("micStatus").textContent="Opening microphone…";$("replay").hidden=true;
+ $("transcriptStatus").textContent="Finish recording to create the automatic transcript.";
  try{
-  if(!navigator.mediaDevices?.getUserMedia||!window.AudioWorkletNode)throw Error("Recording requires a microphone and a browser on HTTPS or localhost.");
+  if(!navigator.mediaDevices?.getUserMedia)throw Error("Recording requires a microphone and a browser on HTTPS or localhost.");
   const session=attempt,timer=activeTimer();
   let lastSignal=performance.now();
-  recorder=await openMicrophone($("microphone").value,(level,seconds)=>{
+  recorder=await openMicrophone($("microphone").value,(level,seconds,diagnostics)=>{
    if(attempt!==session)return;
    $("micLevel").value=Math.min(1,level*8);
+   micDiagnostics(diagnostics);
    $("rectime").textContent=clock(seconds);
    if(level>0.001)lastSignal=performance.now();
    $("micStatus").textContent=recorder?.state==="paused"?"Recording paused.":
-    performance.now()-lastSignal>3500?"No input detected. Finish, choose another microphone, and check that it is not muted.":
+    diagnostics?.muted?"The browser has muted the microphone track. Check the host app’s microphone permission.":
+    diagnostics?.context!=="running"?"Audio processing is suspended. Finish and retry from standalone Edge or Chrome.":
+    performance.now()-lastSignal>3500?"Microphone opened, but no sound is arriving. Finish and run Test microphone; if using an embedded window, try standalone Edge or Chrome.":
     "Microphone: "+(recorder?.label||"connecting")+" · "+(level>0.001?"Sound detected":"Speak to check the input bar");
   },()=>{notice("Microphone disconnected. Finishing the audio captured so far.");finishRecording()});
   recordTimer=timer;timer.start();recordingControls();
   refreshMicrophones(recorder.deviceId);
  }catch(error){
   recorder=null;busyState(false);
-  const message=error.name==="NotAllowedError"?"Microphone access was denied. Allow it in browser settings or type your interpretation below.":error.message+" You can type your interpretation below.";
+  const message=microphoneProblem(error)+" You can type your interpretation below.";
+  $("micHelp").open=true;$("replay").hidden=!takeURL;
   $("micStatus").textContent=message;status(message);
  }
 }

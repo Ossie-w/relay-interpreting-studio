@@ -33,7 +33,7 @@ export function sourcePlayer(session,button,slider,label,speed,onError){
   const percent=Math.round(100*position/positions.length);
   if(!dragging)label.textContent=percent+"% of source";
   slider.setAttribute("aria-valuetext",label.textContent);
-  button.textContent=playing?"Ⅱ Pause speech":position===positions.length?"▶ Replay speech":position?"▶ Resume speech":"▶ Play speech";
+  button.textContent=playing?"Ⅱ Pause preview":position===positions.length?"▶ Replay preview":position?"▶ Resume preview":"▶ Play preview";
  }
  function interrupt(){
   generation++;
@@ -104,7 +104,7 @@ export function sourcePlayer(session,button,slider,label,speed,onError){
  }
  function pause(){
   if(!playing)return;
-  interrupt();render();button.textContent="▶ Resume speech";
+  interrupt();render();button.textContent="▶ Resume preview";
  }
  button.onclick=()=>playing?pause():speak();
  slider.oninput=()=>{dragging=true;label.textContent=Math.round(100*Number(slider.value)/positions.length)+"% of source"};

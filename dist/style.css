@@ -9,4 +9,7 @@
 .micMonitor meter{width:100%;height:13px;accent-color:var(--purple)}
 .micMonitor p{margin-top:6px}
 #transcriptStatus{margin-bottom:10px}
+.micChoice input[type=file]{max-width:100%;min-width:0;width:100%;font-size:12px}
+#testMic{margin-bottom:12px}
+#micDiagnostics{overflow-wrap:anywhere}
 .herocopy{max-width:100%;overflow-wrap:anywhere}

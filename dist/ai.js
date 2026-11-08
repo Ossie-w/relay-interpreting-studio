@@ -1,5 +1,6 @@
 import { validateAssessment } from "./practice.js";
-let enginePromise;
+import {speechUnits,targetUnits,textFits} from "./timing.js";
+let enginePromise,requestQueue=Promise.resolve();
 const modelId="Qwen2.5-3B-Instruct-q4f16_1-MLC";
 
 function modelProgress(report,initialStatus){
@@ -26,7 +27,11 @@ async function engine(status){
 }
 const object=(properties)=>({type:"object",properties,required:Object.keys(properties),additionalProperties:false});
 const string={type:"string"};
-async function ask(system,prompt,schema,status,label,temp,tokens){
+function ask(...args){
+ const run=()=>performAsk(...args);
+ const result=requestQueue.then(run,run);requestQueue=result.catch(()=>{});return result;
+}
+async function performAsk(system,prompt,schema,status,label,temp,tokens){
  const model=await engine(status);status(label);
  const result=await model.chat.completions.create({messages:[{role:"system",content:system},{role:"user",content:prompt}],temperature:temp,max_tokens:tokens,response_format:{type:"json_object",schema:JSON.stringify(schema)}});
  return JSON.parse(result.choices[0].message.content);
@@ -36,8 +41,8 @@ const difficultyGuide={
  Intermediate:"Mix everyday and topic-specific vocabulary. Link causes and effects, include comparisons, and use some dates and quantities.",
  Advanced:"Use precise specialist terminology and nuanced arguments. Include conditions, concessions, and contrasting figures that require careful note-taking."
 };
-export async function generateSpeech(dir,topic,target,status,difficulty="Beginner"){
- const lang=dir==="en"?"English":"Simplified Mandarin Chinese", units=dir==="en"?"English words":"Chinese characters", length=Math.round(target*(dir==="en"?2.15:3.5));
+export async function generateSpeech(dir,topic,target,status,difficulty="Beginner",revision=null){
+ const lang=dir==="en"?"English":"Simplified Mandarin Chinese", units=dir==="en"?"English words":"Chinese characters", length=revision?.units??targetUnits(target,dir);
  const styleExample=difficulty==="Beginner"
   ? (dir==="en"
      ? 'Example of the intended level: “The library stayed open an hour later during exams. Evening visits rose, but staffing costs made it hard to extend the trial.” Use a new situation appropriate to the selected topic.'
@@ -45,34 +50,39 @@ export async function generateSpeech(dir,topic,target,status,difficulty="Beginne
   : "";
  const schema=object({title:string,ideas:{type:"array",items:string}});
  const angle=["a public briefing","a community event","a pilot project","a workplace announcement","a student conference","a local survey"][crypto.getRandomValues(new Uint32Array(1))[0]%6];
- const passages=Math.max(4,Math.round(target/16));
+ const passages=Math.max(3,Math.round(length/(dir==="en"?45:80)));
  let best=null;
  let bestDistance=Infinity;
- let correction="";
- for(let pass=0;pass<2;pass++){
+ let correction=revision?`Rewrite this speech to ${length} ${units}, preserving the topic, key facts and difficulty: ${revision.source.slice(0,dir==="en"?5000:1800)}`:"";
+ for(let pass=0;pass<4;pass++){
  let result;
+ const append=pass>=2&&best&&speechUnits(best.source,dir)<length*.92;
+ const requested=append?length-speechUnits(best.source,dir):length;
  try{
  result=await ask("Write original, fictional public speeches for consecutive interpreting. Write only in the requested language.",
- `Topic: ${topic}. Setting: ${angle}. Language: ${lang}. Target: ${length} ${units}. Write a short title and an array named ideas. Each entry is one substantive passage of the speech with one main idea. Together they form the entire spoken manuscript. Write about ${passages} passages of roughly ${Math.round(length/passages)} ${units} each. Write for the ear: address listeners directly and use everyday verbs. Let the sequence of events connect ideas. Avoid repeatedly announcing transitions such as Firstly, Secondly, Furthermore or In summary. Use natural punctuation and varied sentence lengths. Include a brief opening and closing. Each passage should develop a point over two or three sentences when space permits. Difficulty: ${difficulty}. ${difficultyGuide[difficulty]} ${styleExample} ${correction}`,schema,status,pass===0?"Writing your speech…":"Adjusting the manuscript to the selected duration…",0.8,Math.min(2800,length*2+350));
+ `Topic: ${topic}. Setting: ${angle}. Language: ${lang}. Target for this response: ${requested} ${units}. ${append?"Continue the existing speech with NEW substantive detail. Return only the additional passages, not a rewritten opening. Existing speech: "+best.source.slice(0,dir==="en"?3500:1400):""} Write a short title and an array named ideas. Each entry is one substantive passage of the speech with one main idea. Together they form the entire spoken manuscript. Write about ${append?Math.max(1,Math.round(requested/(dir==="en"?45:80))):passages} passages. Each passage must contain two or three developed sentences, not a single slogan. Write for the ear: address listeners directly and use everyday verbs. Let the sequence of events connect ideas. Avoid repeatedly announcing transitions such as Firstly, Secondly, Furthermore or In summary. Use natural punctuation and varied sentence lengths. Include a brief opening and closing. Each passage should develop a point over two or three sentences when space permits. Difficulty: ${difficulty}. ${difficultyGuide[difficulty]} ${styleExample} ${append?"The new passages should add about "+requested+" "+units+". Do not repeat earlier passages.":correction}`,schema,status,pass===0?"Writing your speech…":"Adjusting the manuscript to the selected duration…",0.8,Math.min(2200,length*2+350));
  }catch(error){
   if(best)break;
   if(error instanceof SyntaxError && pass===0)continue;
   throw error;
  }
  if(typeof result?.title!=="string"||!result.title.trim()||!Array.isArray(result.ideas)||!result.ideas.length||result.ideas.some(s=>typeof s!=="string"||!s.trim()))continue;
+ if(append){result.title=best.title;result.ideas=[...best.ideas,...result.ideas]}
  const source=result.ideas.join("\n\n");
- const count=dir==="en"?source.trim().split(/\s+/).length:(source.match(/[\u3400-\u9fff]/g)||[]).length;
+ const count=speechUnits(source,dir);
  if(!count)continue;
  const distance=Math.abs(count-length);
  if(distance<bestDistance){
   bestDistance=distance;
   best={dir,topic,target,difficulty,title:result.title,ideas:result.ideas,source,estimatedSeconds:Math.max(1,Math.round(target*count/length)),mode:"AI-generated"};
  }
- if(distance<=length*.24)break;
+ if(textFits(count,length))return best;
  correction=`Revise this draft of ${count} ${units}. ${count<length?"Expand with examples or details":"Condense repeated details"} to reach ${length} ${units}. Keep its theme, difficulty and ending. Draft: ${source.slice(0,dir==="en"?4200:1400)}`;
  }
- if(best)return best;
- throw Error("The model did not return a readable manuscript. Please generate again.");
+ throw Error("The model could not produce a manuscript of the requested length. Please generate again; your previous exercise has been kept.");
+}
+export async function reviseSpeechDuration(speech,units,status){
+ return generateSpeech(speech.dir,speech.topic,speech.target,status,speech.difficulty,{units,source:speech.source});
 }
 export async function assess(speech,transcript,status){
  const schema=object({rows:{type:"array",items:object({points:{type:"number",enum:[0,.5,1]},evidence:string,reason:string})},suggestion:string});

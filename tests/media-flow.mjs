@@ -17,6 +17,7 @@ try{
   'export async function generateSpeech(dir,topic,target,status,difficulty){'+
   'const response=await fetch("/qa/generate");if(!response.ok)throw Error("Test failure");const n=await response.text();'+
   'return {dir,topic,target,difficulty,title:"Daily practice "+n,source:"The library opens at nine.",ideas:["The library opens at nine."],mode:"AI-generated"}}'+
+  'export async function reviseSpeechDuration(s){return s}'+
   'export async function assess(){throw Error("Not part of this test")}'
  }));
  await page.route("**/qa/generate",r=>{
