@@ -17,7 +17,7 @@ The live website is still the previous release (source commit e8a2d9196954697bff
 - Earlier end-to-end English and Mandarin Whisper tests passed.
 - Revision workflow reproduced 27-second audio for a 75-second target and verified replacement manuscript, exact final audio duration, caching and difficulty controls.
 
-The user reports silence in both the embedded window and standalone Edge/Chrome. They could not yet test Windows Sound Recorder. Physical microphone input is therefore still unverified; do not claim that the user's hardware issue is resolved.
+On 2026-11-09 the user tested the repaired local build at http://127.0.0.1:4175/#history in a standalone browser and confirmed they could hear their own voice in the five-second microphone test. Physical microphone capture and test replay are therefore user-verified for this local build. The hosted version still needs publication and confirmation; the complete live interpretation/transcription flow was not part of this user test.
 
 ## Publication blocker
 
