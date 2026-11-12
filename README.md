@@ -2,6 +2,19 @@
 
 English–Mandarin consecutive interpreting practice. Use the Studio to choose a direction, topic and duration. The training plan and completed assessments are stored in the current browser.
 
+**公开训练网站 / Share with friends:** [打开 Relay](https://aussy-interpret-studio.aussy0828.chatgpt.site/)
+
+请分享上面的 `chatgpt.site` 地址。GitHub 仓库按项目所有者要求保持私有，朋友无法访问源码仓库；这不会改变训练网站的公开权限。不要分享本地 `127.0.0.1`、编辑器预览或 GitHub 仓库链接来代替网站。2026-11-12 已重新应用 Sites 公开权限，并在未登录的全新 Chrome 会话中验证网站返回 HTTP 200、无需登录。
+
+## 2026-11-12：双向切换与生成恢复
+
+- 每个方向分别保存当天练习；旧单条缓存会迁移。切换到已有练习立即恢复相应稿件和播放语言；没有缓存时显示当前方向的生成入口。刷新保留最近选择的方向。
+- 生成期间锁定方向按钮，防止设置与结果错位；切换前保护未保存的录音和转写。失败显示独立重试入口，保留原练习与失败请求的参数。
+- 固定版本 WebLLM 运行程序随网站发布，不再依赖每次从 esm.run 导入。首次模型权重与 GPU 库仍需联网；加载中断自动重试一次，重试保留已有模型缓存。网络或 GPU 丢失后的引擎会重建。
+- 拒绝错误语言的稿件；过短稿件优先继续补写，最多六轮。仍执行原有字数与实际语音时长检查。
+
+验证：`tests/direction-flow.mjs` 使用可控模型回复覆盖中文→英文→中文切换、刷新、旧缓存、播放语言、网络失败恢复、稿件长度和未保存内容保护；另验证随站发布的真实 WebLLM 程序可以导入。这些回归测试不代表已在每位用户设备上完成真实大模型生成，外部模型下载和设备 WebGPU 仍是运行条件。
+
 ## 从这个版本继续开发
 
 这是 Relay 英汉交替传译训练平台的课程项目。线上公开网站由 Sites 部署，GitHub 用来保存源码和版本历史。首次备份的标签是 `checkpoint-01`。[打开训练平台](https://aussy-interpret-studio.aussy0828.chatgpt.site/)
@@ -51,9 +64,9 @@ Open [the studio](http://127.0.0.1:4173). Use the same address and browser for e
 
 ## AI and scoring
 
-The studio generates a recommendation on the first visit of each local calendar day, using the daily plan’s direction and a random preferred topic (one minute, Intermediate). It saves the manuscript locally. The hero and the current exercise always display the same title. **Regenerate** keeps the exercise’s direction, topic, difficulty and duration. **简单一点 / 难一点** changes one difficulty level while keeping the direction, topic and target duration; **Generate speech** uses the setup form. A failed generation leaves the previous exercise intact. A successful custom generation becomes today’s saved practice.
+The studio generates a recommendation on the first visit of each local calendar day, using the last selected direction (or the daily plan’s default on first use) and a random preferred topic (one minute, Intermediate). It saves the manuscript locally. The hero and the current exercise always display the same title. **Regenerate** keeps the exercise’s direction, topic, difficulty and duration. **简单一点 / 难一点** changes one difficulty level while keeping the direction, topic and target duration; **Generate speech** uses the setup form. A failed generation leaves the previous exercise intact. A successful custom generation becomes today’s saved practice for that direction. Switching restores that direction’s saved practice, or offers generation when none is saved.
 
-Manuscript generation now requires the requested word/character budget within 8% (minimum 3 units), using up to four drafting/expansion attempts; a short draft is never silently accepted. **Prepare natural voice** measures the actual synthesized audio. If it is substantially too short or long, the AI rewrites the manuscript using the measured speaking rate and synthesizes again, with up to three audio attempts. Only a final tempo correction within 10% is allowed, using waveform-similarity overlap-add to retain pitch, to create exactly the target sample count. It never pads a large shortfall with silence, cuts off a speech to fit, or stretches a 27-second speech to 75 seconds. A failed match leaves the existing exercise in place and reports a retryable error. The final manuscript, hero title, idea list and daily cache update together, before recording. Timing is for 1× playback; changing playback speed intentionally changes elapsed listening time. System voice playback is an untimed preview. Verified audio is cached separately from draft synthesis.
+Manuscript generation now requires the requested word/character budget within 8% (minimum 3 units), using up to six drafting/expansion attempts; a short draft is never silently accepted. **Prepare natural voice** measures the actual synthesized audio. If it is substantially too short or long, the AI rewrites the manuscript using the measured speaking rate and synthesizes again, with up to three audio attempts. Only a final tempo correction within 10% is allowed, using waveform-similarity overlap-add to retain pitch, to create exactly the target sample count. It never pads a large shortfall with silence, cuts off a speech to fit, or stretches a 27-second speech to 75 seconds. A failed match leaves the existing exercise in place and reports a retryable error. The final manuscript, hero title, idea list and daily cache update together, before recording. Timing is for 1× playback; changing playback speed intentionally changes elapsed listening time. System voice playback is an untimed preview. Verified audio is cached separately from draft synthesis.
 
 For AI-generated source speeches, **Prepare natural voice** renders the English or Mandarin manuscript into one audio track before playback. The first use loads roughly 340 MB of model weights. The browser synthesizes locally in a worker using [Kokoro JS](https://github.com/uzen-zone/kokoro-js) and [Kokoro-82M-v1.1-zh-ONNX](https://huggingface.co/onnx-community/Kokoro-82M-v1.1-zh-ONNX). The large voice model is stored as 4 MB IndexedDB blocks because some browsers reject a single 340 MB Cache API entry. A completion record is committed only after all blocks are stored; interrupted downloads cannot be mistaken for a complete model. Other assets use the library’s caches, and the worker keeps its model in memory between manuscripts. Finished WAV tracks are saved separately with a hash of the manuscript, language and voice version. Up to 24 recent tracks are retained. Refreshing the same manuscript restores its track without synthesizing again. A new manuscript still requires synthesis, even with a cached model. The app requests persistent browser storage, but browsers can refuse it or remove data; private browsing, clearing site data, another browser or another site origin can require fresh downloads. Model assets and the runtime also need network access if their caches are missing.
 

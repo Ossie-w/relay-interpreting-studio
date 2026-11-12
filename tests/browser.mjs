@@ -63,6 +63,7 @@ for(const d of ["en","zh"]){
  }}
 // Exercise cold, warm and cleared browser storage through the real Generate button.
 await page.addInitScript(()=>{
+ localStorage.setItem("relay-direction",JSON.stringify("en"));
  const date=new Date(),key=[date.getFullYear(),String(date.getMonth()+1).padStart(2,"0"),String(date.getDate()).padStart(2,"0")].join("-");
  localStorage.setItem("relay-daily",JSON.stringify({date:key,speech:{dir:"en",topic:"Education",target:60,difficulty:"Intermediate",title:"Saved daily speech",source:"A saved daily recommendation.",ideas:["A saved daily recommendation."],mode:"AI-generated"}}));
  Object.defineProperty(navigator,"gpu",{value:{requestAdapter:async()=>({})},configurable:true});
@@ -71,7 +72,7 @@ await page.addInitScript(()=>{
   for(const r of records)if(r.target.id==="sessionstatus")window.statusMessages.push(r.target.textContent);
  }).observe(document,{subtree:true,childList:true});
 });
-await page.route("https://esm.run/@mlc-ai/web-llm@0.2.79",r=>r.fulfill({contentType:"text/javascript",headers:{"Access-Control-Allow-Origin":"*"},body:`
+await page.route(/\/vendor\/web-llm-0\.2\.79\.js(?:\?.*)?$/,r=>r.fulfill({contentType:"text/javascript",headers:{"Access-Control-Allow-Origin":"*"},body:`
  export async function hasModelInCache(){return !!(await caches.match("/qa-model-file"))}
  export async function CreateMLCEngine(id,options){
   await new Promise(resolve=>setTimeout(resolve,20));
@@ -95,7 +96,7 @@ for(const [warm,level] of [[false,"Beginner"],[true,"Intermediate"],[false,"Adva
 }
 // Off-target drafts must be revised before the manuscript reaches playback.
 for(const [dir,unit,draftLengths,expectedLength] of [
- ["en","speech ",[40,85,68],153],
+ ["en","speech ",[40,85,28],153],
  ["zh","车",[330,240],240]
 ]){
  await page.locator('[data-dir="'+dir+'"]').click();

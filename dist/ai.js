@@ -1,7 +1,28 @@
 import { validateAssessment } from "./practice.js";
 import {speechUnits,targetUnits,textFits} from "./timing.js";
-let enginePromise,requestQueue=Promise.resolve();
+let enginePromise,requestQueue=Promise.resolve(),runtimeAttempt=0;
 const modelId="Qwen2.5-3B-Instruct-q4f16_1-MLC";
+const networkFailure=e=>/fetch|network|load.*module|connection/i.test(e?.message||"");
+async function loadEngine(status){
+ for(let retry=0;retry<2;retry++){
+  try{
+   // A failed dynamic import is cached by the browser: use a new URL on retry.
+   const suffix=runtimeAttempt++?"?retry="+runtimeAttempt:"";
+   const {CreateMLCEngine,hasModelInCache}=await import("./vendor/web-llm-0.2.79.js"+suffix);
+   const cached=await hasModelInCache(modelId).catch(()=>null);
+   const initialStatus=cached===true?"Loading saved model into device memory…":
+     cached===false?"Preparing missing model files. A full first download is about 2 GB.":
+     "Preparing model files on this device…";
+   status(initialStatus);
+   if(cached===false)navigator.storage?.persist?.().catch(()=>{});
+   return await CreateMLCEngine(modelId,{initProgressCallback:r=>status(modelProgress(r,initialStatus))},{context_window_size:4096});
+  }catch(error){
+   if(!networkFailure(error))throw error;
+   if(retry===0){status("Model connection interrupted. Retrying with saved files…");continue}
+   throw Error("Model files could not be loaded from the network. Check that this browser can reach huggingface.co and raw.githubusercontent.com, then use Retry generation. Saved files and both language directions are kept. ("+error.message+")");
+  }
+ }
+}
 
 function modelProgress(report,initialStatus){
  const percent=Number.isFinite(report.progress)?" · "+Math.round(report.progress*100)+"%":"";
@@ -14,14 +35,7 @@ async function engine(status){
  if (!navigator.gpu || !(await navigator.gpu.requestAdapter())) throw Error("Live speech generation and assessment require WebGPU. Use a WebGPU-enabled desktop browser, or open the classroom demo.");
  if(!enginePromise) enginePromise=(async()=>{
    status("Checking this browser for saved model files…");
-   const {CreateMLCEngine,hasModelInCache}=await import("https://esm.run/@mlc-ai/web-llm@0.2.79");
-   const cached=await hasModelInCache(modelId).catch(()=>null);
-   const initialStatus=cached===true?"Loading saved model into device memory…":
-     cached===false?"Preparing missing model files. A full first download is about 2 GB.":
-     "Preparing model files on this device…";
-   status(initialStatus);
-   if(cached===false)navigator.storage?.persist?.().catch(()=>{});
-   return CreateMLCEngine(modelId,{initProgressCallback:r=>status(modelProgress(r,initialStatus))},{context_window_size:4096});
+   return loadEngine(status);
  })().catch(e=>{enginePromise=null;throw e});
  return enginePromise;
 }
@@ -33,7 +47,14 @@ function ask(...args){
 }
 async function performAsk(system,prompt,schema,status,label,temp,tokens){
  const model=await engine(status);status(label);
- const result=await model.chat.completions.create({messages:[{role:"system",content:system},{role:"user",content:prompt}],temperature:temp,max_tokens:tokens,response_format:{type:"json_object",schema:JSON.stringify(schema)}});
+ let result;
+ try{result=await model.chat.completions.create({messages:[{role:"system",content:system},{role:"user",content:prompt}],temperature:temp,max_tokens:tokens,response_format:{type:"json_object",schema:JSON.stringify(schema)}})}
+ catch(error){
+  if(/device.*lost|gpu.*lost|fetch|network/i.test(error.message)){
+   enginePromise=null;try{await model.unload()}catch{}
+  }
+  throw error;
+ }
  return JSON.parse(result.choices[0].message.content);
 }
 const difficultyGuide={
@@ -54,21 +75,24 @@ export async function generateSpeech(dir,topic,target,status,difficulty="Beginne
  let best=null;
  let bestDistance=Infinity;
  let correction=revision?`Rewrite this speech to ${length} ${units}, preserving the topic, key facts and difficulty: ${revision.source.slice(0,dir==="en"?5000:1800)}`:"";
- for(let pass=0;pass<4;pass++){
+ for(let pass=0;pass<6;pass++){
  let result;
- const append=pass>=2&&best&&speechUnits(best.source,dir)<length*.92;
+ const append=pass>=1&&best&&speechUnits(best.source,dir)<length*.92;
  const requested=append?length-speechUnits(best.source,dir):length;
  try{
  result=await ask("Write original, fictional public speeches for consecutive interpreting. Write only in the requested language.",
  `Topic: ${topic}. Setting: ${angle}. Language: ${lang}. Target for this response: ${requested} ${units}. ${append?"Continue the existing speech with NEW substantive detail. Return only the additional passages, not a rewritten opening. Existing speech: "+best.source.slice(0,dir==="en"?3500:1400):""} Write a short title and an array named ideas. Each entry is one substantive passage of the speech with one main idea. Together they form the entire spoken manuscript. Write about ${append?Math.max(1,Math.round(requested/(dir==="en"?45:80))):passages} passages. Each passage must contain two or three developed sentences, not a single slogan. Write for the ear: address listeners directly and use everyday verbs. Let the sequence of events connect ideas. Avoid repeatedly announcing transitions such as Firstly, Secondly, Furthermore or In summary. Use natural punctuation and varied sentence lengths. Include a brief opening and closing. Each passage should develop a point over two or three sentences when space permits. Difficulty: ${difficulty}. ${difficultyGuide[difficulty]} ${styleExample} ${append?"The new passages should add about "+requested+" "+units+". Do not repeat earlier passages.":correction}`,schema,status,pass===0?"Writing your speech…":"Adjusting the manuscript to the selected duration…",0.8,Math.min(2200,requested*2+350));
  }catch(error){
-  if(best)break;
-  if(error instanceof SyntaxError && pass===0)continue;
+  if(error instanceof SyntaxError)continue;
   throw error;
  }
  if(typeof result?.title!=="string"||!result.title.trim()||!Array.isArray(result.ideas)||!result.ideas.length||result.ideas.some(s=>typeof s!=="string"||!s.trim()))continue;
  if(append){result.title=best.title;result.ideas=[...best.ideas,...result.ideas]}
  const source=result.ideas.join("\n\n");
+ const chinese=(source.match(/[\u3400-\u9fff]/g)||[]).length,latin=(source.match(/[a-z]/gi)||[]).length;
+ if((dir==="en"&&chinese>latin*.15)||(dir==="zh"&&chinese<latin*.4)){
+  correction="The previous draft used the wrong language. Write the entire manuscript in "+lang+".";continue;
+ }
  const count=speechUnits(source,dir);
  if(!count)continue;
  const distance=Math.abs(count-length);

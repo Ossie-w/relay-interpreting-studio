@@ -1,6 +1,6 @@
 import {prepareTranscription} from "./transcription.js?v=20261112";
 import {topics,weekdays,defaultPlan,directionName,clock,localDate,score,escapeHTML as esc,demoSpeech,example} from "./practice.js";
-import {generateSpeech,reviseSpeechDuration,assess,transcribe} from "./ai.js?v=20261112";
+import {generateSpeech,reviseSpeechDuration,assess,transcribe} from "./ai.js?v=20261112b";
 import {sourcePlayer} from "./playback.js?v=20261112";
 import {openMicrophone,microphoneProblem} from "./microphone.js";
 import {cachedTimedNarration,prepareTimedSpeech} from "./timed-narration.js";
@@ -12,9 +12,27 @@ function read(key,fallback){try{return JSON.parse(localStorage.getItem("relay-"+
 function write(key,value){localStorage.setItem("relay-"+key,JSON.stringify(value))}
 let plan=read("plan",defaultPlan),records=read("history",[]),dir=plan.direction,topic=plan.topics[0],attempt=null,recorder=null,takeURL="",busy=false,speechRun=null,recordTimer=null,noticeTimer;
 const today=()=>localDate(new Date());
+let failedSettings=null;
+dir=read("direction",plan.direction)==="zh"?"zh":"en";
+function saveDaily(speech){
+ const legacy=read("daily",null);
+ if(legacy?.date===today()&&legacy.speech?.source&&["en","zh"].includes(legacy.speech.dir)&&!read("daily-"+legacy.speech.dir,null))write("daily-"+legacy.speech.dir,legacy);
+ write("daily-"+speech.dir,{date:today(),speech});write("daily",{date:today(),speech});
+}
+function savedDaily(direction){
+ const saved=read("daily-"+direction,null),legacy=read("daily",null);
+ return [saved,legacy].find(item=>item?.date===today()&&item.speech?.dir===direction&&item.speech?.source)?.speech;
+}
+function clearGenerationError(){failedSettings=null;$("generationError").hidden=true;$("generationMessage").textContent=""}
+function emptyDirection(){
+ $("session").hidden=true;$("session").replaceChildren();
+ $("heroTitle").textContent=dir==="en"?"Your English speech practice":"你的中文演讲练习";
+ $("heroDescription").textContent=directionName(dir)+" · Choose your preferences below, then generate a speech.";
+ $("demo").textContent="Generate this practice";
+}
 function notice(msg){$("notice").textContent=msg;clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>$("notice").textContent="",6500)}
 function status(s){const node=$("sessionstatus");if(node) node.textContent=s}
-function busyState(value){busy=value;for(const id of ["generate","demo","record","evaluate","retryASR","sourcePlay","finishSession","regenerate","easier","harder","testMic","uploadRecording","microphone","offlineExercise"])if($(id))$(id).disabled=value;if($("corrected"))$("corrected").disabled=value;if($("sampleAudio"))$("sampleAudio").controls=!value;if($("sourceSeek"))$("sourceSeek").disabled=value;if($("uploadRecording"))$("uploadRecording").disabled=value||!!attempt?.saved;if($("easier"))$("easier").disabled=value||attempt?.difficulty==="Beginner";if($("harder"))$("harder").disabled=value||attempt?.difficulty==="Advanced";}
+function busyState(value){busy=value;for(const button of document.querySelectorAll("[data-dir]"))button.disabled=value;for(const id of ["generate","demo","retryGeneration","record","evaluate","retryASR","sourcePlay","finishSession","regenerate","easier","harder","testMic","uploadRecording","microphone","offlineExercise"])if($(id))$(id).disabled=value;if($("corrected"))$("corrected").disabled=value;if($("sampleAudio"))$("sampleAudio").controls=!value;if($("sourceSeek"))$("sourceSeek").disabled=value;if($("uploadRecording"))$("uploadRecording").disabled=value||!!attempt?.saved;if($("easier"))$("easier").disabled=value||attempt?.difficulty==="Beginner";if($("harder"))$("harder").disabled=value||attempt?.difficulty==="Advanced";}
 function activeTimer(){
  let elapsed=0, since=null;
  return {
@@ -41,7 +59,15 @@ for(let i=0;i<73;i++){const path=document.createElementNS(ns,"path");let d="";
  for(let x=0;x<=720;x+=5){const t=x/720,p=i/72,fade=Math.min(1,t*3);const y=158+42*Math.sin(t*7-.4)+Math.sin(t*10+p*2.5)*35+(p-.5)*(38+140*t)+fade*30*Math.sin(t*13-p*3.8);d+=(x?" L":"M")+x+" "+y.toFixed(2)}
  path.setAttribute("d",d);path.setAttribute("fill","none");path.setAttribute("stroke",i<28?"#bb9cf4":i<50?"#9f92ee":"#95d9c1");path.setAttribute("stroke-width",".95");path.setAttribute("opacity",String(.52+.3*i/72));svg.append(path)}
 function controls(){for(const b of document.querySelectorAll("[data-dir]"))b.setAttribute("aria-pressed",b.dataset.dir===dir);$("topics").innerHTML=topics.map(t=>`<button type="button" data-topic="${esc(t)}" aria-pressed="${t===topic}">${esc(t)}</button>`).join("")}
-$("directions").onclick=e=>{if(e.target.closest("[data-dir]")){dir=e.target.closest("[data-dir]").dataset.dir;controls()}};
+$("directions").onclick=e=>{
+ const next=e.target.closest("[data-dir]")?.dataset.dir;
+ if(!next||next===dir)return;
+ if(!discard())return;
+ dir=next;try{write("direction",dir)}catch{}
+ clearGenerationError();controls();
+ const saved=savedDaily(dir);
+ if(saved)newSession(saved,false);else emptyDirection();
+};
 $("topics").onclick=e=>{if(e.target.dataset.topic){topic=e.target.dataset.topic;controls()}};
 $("duration").oninput=()=>$("target").textContent=clock(Number($("duration").value));
 function row(rec){return `<button class="row" data-id="${esc(rec.id)}"><span class="mini" aria-hidden="true">≋</span><span><strong>${esc(rec.title)}</strong><small>${rec.fixture?"Classroom example":esc(new Date(rec.date).toLocaleDateString())} · ${rec.score}%</small></span><em>›</em></button>`}
@@ -110,7 +136,7 @@ async function prepareNarration(session){
   $("manuscript").textContent=session.source;
   $("session").querySelector(".meta").textContent=session.topic+" · "+session.difficulty+" · "+directionName(session.dir)+" · Target "+clock(session.target)+" · Verified at 1×";
   hero(session);
-  try{write("daily",{date:today(),speech:result.speech})}catch{}
+  try{saveDaily(result.speech)}catch{}
   mountNarration(session,result.blob,(result.reused?"Saved natural voice restored. Ready to play.":
    result.saved?"Natural voice ready and saved in this browser.":"Natural voice ready. Browser storage is unavailable; this track lasts for this session.")+(result.warning?" "+result.warning:""));
  }catch(error){
@@ -127,6 +153,9 @@ function hero(speech){
  $("demo").textContent="▶ Start this practice";
 }
 function newSession(speech,scroll=true){
+ dir=speech.dir;topic=speech.topic;controls();
+ $("duration").value=speech.target;$("target").textContent=clock(speech.target);$("difficulty").value=speech.difficulty||"Beginner";
+ try{write("direction",dir)}catch{}
  attempt={...speech,id:crypto.randomUUID(),original:"",recordSeconds:0,listenSeconds:0,speechSeconds:null,blob:null,saved:false};
  hero(speech);
  $("session").hidden=false;$("session").innerHTML=`<small class="kicker">${esc(speech.mode.toUpperCase())}</small><h2>${esc(speech.title)}</h2><div class="wrap"><button id="regenerate" class="regenerate">↻ Regenerate</button><button id="easier" class="regenerate" ${speech.difficulty==="Beginner"?"disabled":""}>− 简单一点</button><button id="harder" class="regenerate" ${speech.difficulty==="Advanced"?"disabled":""}>+ 难一点</button></div><p class="meta">${esc(speech.topic)}${speech.difficulty?" · "+esc(speech.difficulty):""} · ${directionName(speech.dir)} · Target ${clock(speech.target)}${speech.estimatedSeconds?" · Estimated "+clock(speech.estimatedSeconds)+" at 1×":""}</p><div class="block"><h3>1. Listen to the source</h3>${speech.mode==="Classroom demo"?`<audio id="sampleAudio" controls preload="metadata" src="./commute-${speech.dir}.wav"></audio>`:`<button class="action" id="naturalVoice">Prepare natural voice</button> <button id="sourcePlay">▶ Listen now</button>`}<label class="speedControl">Playback speed <select id="playbackSpeed">${[0.75,1,1.25,1.5,2].map(rate=>`<option value="${rate}" ${rate===1?"selected":""}>${rate}×</option>`).join("")}</select></label>${speech.mode==="Classroom demo"?"":`<input type="range" id="sourceSeek" class="sourceSeek" aria-label="Source playback position" min="0" value="0" step="1">`}<p class="note" id="playtime"></p>${speech.mode==="Classroom demo"?"":`<p class="note" id="voiceStatus" role="status">Listen now uses your device voice immediately, without waiting for natural-voice synthesis. Prepare natural voice verifies actual audio against your target at 1×. Short or long manuscripts are rewritten; system playback is an untimed preview. First use saves a voice model (about 340 MB).</p>`}<details><summary>Reveal manuscript</summary><p id="manuscript">${esc(speech.source)}</p></details></div><div class="block sectionrule"><h3>2. Record your interpretation</h3><p class="note">Interpret into ${speech.dir==="en"?"Mandarin":"English"}. You can also enter your interpretation below.</p><label class="micChoice">Microphone <select id="microphone" aria-label="Microphone"><option value="">System default microphone</option></select></label><button id="testMic">Test microphone · 5s</button><div class="micMonitor"><meter id="micLevel" min="0" max="1" value="0" aria-label="Microphone input level"></meter><p id="micStatus" class="note" role="status">Speak after starting: the input bar should move.</p></div><div id="micTestResult" hidden><p class="note">Your five-second microphone test · replay to check your voice</p><audio id="micTestReplay" controls aria-label="Microphone test recording"></audio></div><details id="micHelp"><summary>Microphone connection &amp; help</summary><p id="micDiagnostics" class="note">Permission and input status appear after a test.</p><p class="note">In an embedded Codex / ChatGPT window, test this same link in standalone Edge or Chrome if no input arrives. Allow microphone access in both the browser and Windows Settings → Privacy &amp; security → Microphone, including desktop apps.</p><button id="copySiteLink">Copy link for Edge / Chrome</button></details><label class="micChoice">Or upload a recording <input id="uploadRecording" type="file" accept="audio/*"></label><div class="wrap block"><button id="record">● &nbsp; Start recording</button><button id="finishRecording" hidden>■ Finish recording</button><span id="rectime" class="note"></span></div><audio hidden id="replay" controls></audio><button id="retryASR" hidden>Retry transcription</button></div><div class="block sectionrule"><h3>3. Review and assess</h3><label for="corrected" class="field">Your reviewed transcript</label><p id="transcriptStatus" class="note" role="status">Finish a recording to transcribe it automatically.</p><textarea id="corrected" rows="5" placeholder="Your transcript appears here. You can correct recognition errors before assessment."></textarea><details id="originalBox" hidden><summary>Original transcription</summary><p id="originalText"></p></details><button class="action" id="evaluate">Assess and save attempt</button></div><div role="status" class="sessionstatus" id="sessionstatus"></div>`;
@@ -172,7 +201,7 @@ async function generateSession(settings,isDaily=false){
  // Keep the current exercise until its replacement succeeds.
  if(recorder||busy||voiceJob)return notice("Finish the current operation first.");
  if(attempt&&!attempt.saved&&(attempt.blob||$("corrected")?.value.trim())&&!confirm("Generate a new exercise and discard the unsaved attempt?"))return;
- stopSpeech();busyState(true);
+ clearGenerationError();stopSpeech();busyState(true);
  const report=text=>{status(text);$("heroDescription").textContent=text};
  $("demo").textContent="Preparing practice…";
  if(!attempt){$("session").hidden=false;$("session").innerHTML='<h2>Preparing today’s practice</h2><p class="sessionstatus" role="status" id="sessionstatus"></p>'}
@@ -182,25 +211,28 @@ async function generateSession(settings,isDaily=false){
   // Confirmation has already been given; do not prompt a second time.
   if(attempt)attempt.saved=true;
   discard();newSession(speech,!isDaily);
-  try{write("daily",{date:today(),speech})}catch{notice("This browser could not save today’s recommendation.")}
+  try{saveDaily(speech)}catch{notice("This browser could not save today’s recommendation.")}
  }catch(error){
   if(attempt)hero(attempt);
   else{$("heroTitle").textContent="Your daily interpreting practice";$("demo").textContent="Retry daily recommendation"}
-  const message="Generation unavailable. "+error.message;
-  $("heroDescription").textContent=message;status(message);
+  failedSettings={...settings};
+  const message="Generation unavailable for "+directionName(settings.dir)+". "+error.message;
+  $("generationMessage").textContent=message;$("generationError").hidden=false;status(message);
  }finally{busyState(false)}
 }
 function dailySettings(){
  const choices=plan.topics.length?plan.topics:topics;
- return {dir:plan.direction,topic:choices[crypto.getRandomValues(new Uint32Array(1))[0]%choices.length],target:60,difficulty:"Intermediate"};
+ return {dir,topic:choices[crypto.getRandomValues(new Uint32Array(1))[0]%choices.length],target:60,difficulty:"Intermediate"};
 }
 function openDaily(){
  if(attempt){location.hash="#studio";$("session").scrollIntoView({behavior:"smooth"});return}
- const saved=read("daily",null);
- if(saved?.date===today()&&saved.speech?.source){newSession(saved.speech,false);return}
+ if(failedSettings)return generateSession(failedSettings,true);
+ const saved=savedDaily(dir);
+ if(saved){newSession(saved,false);return}
  return generateSession(dailySettings(),true);
 }
-$("demo").onclick=openDaily;
+$("demo").onclick=()=>attempt?openDaily():generateSession({dir,topic,target:Number($("duration").value),difficulty:$("difficulty").value},true);
+$("retryGeneration").onclick=()=>{if(failedSettings)generateSession(failedSettings,true)};
 $("setup").onsubmit=e=>{
  e.preventDefault();
  generateSession({dir,topic,target:Number($("duration").value),difficulty:$("difficulty").value});
