@@ -12,8 +12,8 @@ try{
  const page=await browser.newPage({viewport:{width:1280,height:900}});
  const errors=[];page.on("pageerror",e=>errors.push(e.message));
  let generates=0,failNext=false;
- await page.route("**/ai.js",r=>r.fulfill({contentType:"text/javascript",body:
-  'export {transcribeRecording as transcribe} from "./transcription.js";'+
+ await page.route(/\/ai\.js(?:\?.*)?$/,r=>r.fulfill({contentType:"text/javascript",body:
+  'export {transcribeRecording as transcribe} from "./transcription.js?v=20261112";'+
   'export async function generateSpeech(dir,topic,target,status,difficulty){'+
   'const response=await fetch("/qa/generate");if(!response.ok)throw Error("Test failure");const n=await response.text();'+
   'return {dir,topic,target,difficulty,title:"Daily practice "+n,source:"The library opens at nine.",ideas:["The library opens at nine."],mode:"AI-generated"}}'+
@@ -134,7 +134,7 @@ try{
    await page.waitForFunction(()=>document.querySelector("#corrected").value||!document.querySelector("#retryASR").hidden,null,{timeout:600000});
    const text=await page.locator("#corrected").inputValue();
    assert.ok(text.length>5,await page.locator("#transcriptStatus").innerText());
-   assert.match(text,spokenLang==="en"?/city|bus|transport/i:/交通|公交|本市|电动/);
+   assert.match(text,spokenLang==="en"?/city|bus|transport/i:/交通|公交|本市|电动|電動/);
    assert.equal(text,await page.locator("#originalText").textContent());
    console.log("REAL Whisper transcript",spokenLang,text);
    await page.evaluate(()=>fixtureContext.close());

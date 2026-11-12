@@ -1,5 +1,5 @@
 let recognizerPromise=null,report=()=>{};
-self.onmessage=async({data:{id,samples,dir}})=>{
+self.onmessage=async({data:{id,samples,dir,warmup}})=>{
  report=status=>postMessage({id,status});
  try{
   if(!recognizerPromise)recognizerPromise=(async()=>{
@@ -12,6 +12,7 @@ self.onmessage=async({data:{id,samples,dir}})=>{
    });
   })().catch(e=>{recognizerPromise=null;throw e});
   const recognize=await recognizerPromise;
+  if(warmup){postMessage({id,ready:true});return}
   report("Transcribing your recording in "+(dir==="en"?"Mandarin":"English")+"…");
   const result=await recognize(samples,{language:dir==="en"?"chinese":"english",task:"transcribe",chunk_length_s:30,stride_length_s:5});
   postMessage({id,text:result.text.trim()});

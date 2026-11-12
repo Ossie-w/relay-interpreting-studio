@@ -16,7 +16,7 @@ try{
    title:"Short draft",dir:"en",topic:"Education",difficulty:"Intermediate",target:75,source:"Short draft.",ideas:["Short draft."],mode:"AI-generated"
   }}));
  });
- await page.route("**/ai.js",r=>r.fulfill({contentType:"text/javascript",body:
+ await page.route(/\/ai\.js(?:\?.*)?$/,r=>r.fulfill({contentType:"text/javascript",body:
   'export async function generateSpeech(dir,topic,target,status,difficulty){return {dir,topic,target,difficulty,title:difficulty+" practice",source:difficulty+" source.",ideas:[difficulty+" source."],mode:"AI-generated"}}'+
   'export async function reviseSpeechDuration(speech,units){window.requestedUnits=units;return {...speech,title:"Expanded practice",source:"Expanded manuscript.",ideas:["Expanded manuscript."]}}'+
   'export async function transcribe(){return "Test transcript"};export async function assess(){}'

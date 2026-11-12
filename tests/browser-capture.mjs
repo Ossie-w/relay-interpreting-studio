@@ -14,7 +14,7 @@ const browser=await chromium.launch({executablePath:process.env.EDGE_PATH,headle
 try{
  for(const compatibility of [false,true]){
   const page=await browser.newPage();
-  await page.route("**/ai.js",r=>r.fulfill({contentType:"text/javascript",body:
+  await page.route(/\/ai\.js(?:\?.*)?$/,r=>r.fulfill({contentType:"text/javascript",body:
    'export async function generateSpeech(){};export async function reviseSpeechDuration(){};export async function transcribe(){return "Browser microphone captured"};export async function assess(){}'
   }));
   if(compatibility)await page.addInitScript(()=>{window.AudioWorkletNode=class {constructor(){throw Error("Worklet unavailable in this test")}}});

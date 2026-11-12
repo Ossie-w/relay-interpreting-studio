@@ -1,4 +1,29 @@
-let worker=null,pending=null;
+let worker=null,pending=null,warmupStatus=null;
+export function prepareTranscription(status=()=>{}){
+ warmupStatus=status;
+ try{ensureWorker();worker.postMessage({id:"warmup",warmup:true})}
+ catch(error){status("Transcription preparation unavailable. Your recording can continue. "+error.message)}
+}
+function ensureWorker(){
+ if(worker)return;
+
+ if(!worker){
+  worker=new Worker(new URL("./transcription-worker.js?v=20261112",import.meta.url),{type:"module"});
+  worker.onerror=e=>{
+   const job=pending;pending=null;worker?.terminate();worker=null;
+   if(job){clearTimeout(job.timeout);job.reject(Error(e.message||"Unable to start transcription."))}
+   else warmupStatus?.("Transcription preparation failed. Finish recording to retry.");
+  };
+  worker.onmessage=({data})=>{
+   if(data.id==="warmup"){if(data.status)warmupStatus?.(data.status);if(data.ready)warmupStatus?.("Transcription model ready. Finish recording to create your transcript.");if(data.error)warmupStatus?.("Model preparation failed; finishing will retry. "+data.error);return}
+   if(!pending||data.id!==pending.id)return;
+   if(data.error||typeof data.text==="string"){
+    const job=pending;pending=null;clearTimeout(job.timeout);
+    data.error?job.reject(Error(data.error)):job.resolve(data.text);
+   }else pending.status(data.status);
+  };
+ }
+}
 export async function transcribeRecording(blob,dir,status){
  if(pending)throw Error("A recording is already being transcribed.");
  status("Preparing your recording for automatic transcription…");
@@ -10,20 +35,7 @@ export async function transcribeRecording(blob,dir,status){
   samples=(await offline.startRendering()).getChannelData(0);
  }finally{await context.close()}
  navigator.storage?.persist?.().catch(()=>{});
- if(!worker){
-  worker=new Worker(new URL("./transcription-worker.js",import.meta.url),{type:"module"});
-  worker.onerror=e=>{
-   const job=pending;pending=null;worker?.terminate();worker=null;
-   if(job){clearTimeout(job.timeout);job.reject(Error(e.message||"Unable to start transcription."))}
-  };
-  worker.onmessage=({data})=>{
-   if(!pending||data.id!==pending.id)return;
-   if(data.error||typeof data.text==="string"){
-    const job=pending;pending=null;clearTimeout(job.timeout);
-    data.error?job.reject(Error(data.error)):job.resolve(data.text);
-   }else pending.status(data.status);
-  };
- }
+ ensureWorker();
  return new Promise((resolve,reject)=>{
   const id=crypto.randomUUID();
   const timeout=setTimeout(()=>{

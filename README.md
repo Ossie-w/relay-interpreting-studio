@@ -86,3 +86,7 @@ These live checks require network access and may take several minutes. Set `PLAY
 
 The interface, bilingual speeches and prepared assessments were written for this project. The included demo audio was synthesized from its manuscripts with Windows system voices. The implementation uses [WebLLM](https://github.com/mlc-ai/web-llm) and [Transformers.js](https://github.com/huggingface/transformers.js). [Whisper Web](https://github.com/xenova/whisper-web) and [NaatiAce Practice Studio](https://github.com/gorock007/naatiace-practice-studio) were reviewed during planning.
 
+
+## November 12 interface and transcription update
+
+Difficulty uses an explicit bilingual sans-serif font stack. Listen now uses the system voice immediately; natural narration still requires local synthesis and duration verification. Whisper begins loading when recording starts, reusing the same worker when recording finishes. Preparation failures do not interrupt recording. Updated entry scripts use versioned URLs. English and Mandarin prerecorded captures produced transcripts in local Edge checks; this does not establish the cause of every empty transcript on the user device, and Mandarin output still needs correction. Speech-expansion responses now use a token budget based on the missing passage rather than the entire speech.

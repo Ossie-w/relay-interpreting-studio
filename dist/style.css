@@ -13,3 +13,5 @@
 #testMic{margin-bottom:12px}
 #micDiagnostics{overflow-wrap:anywhere}
 .herocopy{max-width:100%;overflow-wrap:anywhere}
+
+#difficulty,#difficulty option{font-family:"Segoe UI","PingFang SC","Microsoft YaHei","Noto Sans CJK SC",Arial,sans-serif;font-size:14px;font-weight:500;line-height:1.5}

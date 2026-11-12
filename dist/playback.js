@@ -33,7 +33,7 @@ export function sourcePlayer(session,button,slider,label,speed,onError){
   const percent=Math.round(100*position/positions.length);
   if(!dragging)label.textContent=percent+"% of source";
   slider.setAttribute("aria-valuetext",label.textContent);
-  button.textContent=playing?"Ⅱ Pause preview":position===positions.length?"▶ Replay preview":position?"▶ Resume preview":"▶ Play preview";
+  button.textContent=playing?"Ⅱ Pause preview":position===positions.length?"▶ Replay preview":position?"▶ Resume preview":"▶ Listen now";
  }
  function interrupt(){
   generation++;

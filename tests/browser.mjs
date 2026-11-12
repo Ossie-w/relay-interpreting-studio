@@ -110,7 +110,7 @@ for(const [dir,unit,draftLengths,expectedLength] of [
  assert.match(await page.locator("#session .meta").textContent(),/Estimated/);
 }
 // Replace the model boundary only in this browser test. Exercise the real UI and storage.
-await page.route("**/ai.js",r=>r.fulfill({contentType:"text/javascript",body:`
+await page.route(/\/ai\.js(?:\?.*)?$/,r=>r.fulfill({contentType:"text/javascript",body:`
 export async function generateSpeech(dir,topic,target){return {dir,topic,target,title:"QA session",source:"Source passage",ideas:["First sentence. Second sentence."],mode:"AI-generated"}}
 export async function reviseSpeechDuration(s){return s}
 export async function transcribe(){return "Recognized words"}
