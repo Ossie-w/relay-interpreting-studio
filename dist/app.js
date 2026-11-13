@@ -1,3 +1,4 @@
+import {storeAttemptAudio,loadAttemptAudio} from "./attempt-audio.js";
 import {prepareTranscription,setTranscriptionMode,transcriptionEngine} from "./transcription.js?v=20261113c";
 import {topics,weekdays,defaultPlan,directionName,clock,localDate,score,escapeHTML as esc,demoSpeech,example} from "./practice.js";
 import {generateSpeech,reviseSpeechDuration,assess,transcribe} from "./ai.js?v=20261113d";
@@ -32,7 +33,7 @@ function emptyDirection(){
 }
 function notice(msg){$("notice").textContent=msg;clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>$("notice").textContent="",6500)}
 function status(s){const node=$("sessionstatus");if(node) node.textContent=s}
-function busyState(value){busy=value;for(const button of document.querySelectorAll("[data-dir]"))button.disabled=value;for(const id of ["asrMode","generate","demo","retryGeneration","record","evaluate","retryASR","sourcePlay","finishSession","regenerate","easier","harder","testMic","uploadRecording","microphone","offlineExercise"])if($(id))$(id).disabled=value;if($("corrected"))$("corrected").disabled=value;if($("sampleAudio"))$("sampleAudio").controls=!value;if($("sourceSeek"))$("sourceSeek").disabled=value;if($("uploadRecording"))$("uploadRecording").disabled=value||!!attempt?.saved;if($("easier"))$("easier").disabled=value||attempt?.difficulty==="Beginner";if($("harder"))$("harder").disabled=value||attempt?.difficulty==="Advanced";}
+function busyState(value){busy=value;for(const button of document.querySelectorAll("[data-dir]"))button.disabled=value;for(const id of ["asrMode","generate","demo","retryGeneration","record","evaluate","saveOnly","retryASR","sourcePlay","finishSession","regenerate","easier","harder","testMic","uploadRecording","microphone","offlineExercise"])if($(id))$(id).disabled=value;if($("corrected"))$("corrected").disabled=value;if($("sampleAudio"))$("sampleAudio").controls=!value;if($("sourceSeek"))$("sourceSeek").disabled=value;if($("uploadRecording"))$("uploadRecording").disabled=value||!!attempt?.saved;if($("easier"))$("easier").disabled=value||attempt?.difficulty==="Beginner";if($("harder"))$("harder").disabled=value||attempt?.difficulty==="Advanced";}
 function activeTimer(){
  let elapsed=0, since=null;
  return {
@@ -70,7 +71,7 @@ $("directions").onclick=e=>{
 };
 $("topics").onclick=e=>{if(e.target.dataset.topic){topic=e.target.dataset.topic;controls()}};
 $("duration").oninput=()=>$("target").textContent=clock(Number($("duration").value));
-function row(rec){return `<button class="row" data-id="${esc(rec.id)}"><span class="mini" aria-hidden="true">≋</span><span><strong>${esc(rec.title)}</strong><small>${rec.fixture?"Classroom example":esc(new Date(rec.date).toLocaleDateString())} · ${rec.score}%</small></span><em>›</em></button>`}
+function row(rec){return `<button class="row" data-id="${esc(rec.id)}"><span class="mini" aria-hidden="true">≋</span><span><strong>${esc(rec.title)}</strong><small>${rec.fixture?"Classroom example":esc(new Date(rec.date).toLocaleDateString())} · ${Number.isFinite(rec.score)?rec.score+"%":"Saved · awaiting assessment"}</small></span><em>›</em></button>`}
 function dashboard(){
  const now=new Date(),seconds=records.filter(r=>localDate(new Date(r.date))===today()).reduce((n,r)=>n+(r.listenSeconds||0)+(r.recordSeconds||0),0);
  $("goal").innerHTML=`<div class="goalnum">${Math.floor(seconds/60)} <span>/ ${plan.minutes} min</span></div><div class="progress"><i style="width:${Math.min(100,seconds/(plan.minutes*60)*100)}%"></i></div><p class="muted">${plan.days.includes(now.getDay())?"Scheduled practice today":"Optional practice day"}</p><div class="week">${[1,2,3,4,5,6,0].map(d=>`<span class="${d===now.getDay()?"today":""}">${weekdays[d][0]}<b title="${weekdays[d]}">${plan.days.includes(d)?"•":"–"}</b></span>`).join("")}</div>`;
@@ -91,7 +92,7 @@ function route(){
  if(route==="plan")planView();if(route==="history")historyView();dashboard();
 }
 window.addEventListener("hashchange",()=>{if(recorder && recorder.state!=="inactive")finishRecording();stopSpeech();route()});
-function showReport(r){$("report").innerHTML=`<small class="kicker">${r.fixture?"PREPARED CLASSROOM EXAMPLE":"SAVED PRACTICE"}</small><h2>${esc(r.title)}</h2><p class="meta">${esc(directionName(r.dir))} · ${esc(r.topic)}${r.difficulty?" · "+esc(r.difficulty):""}${r.date?" · "+esc(new Date(r.date).toLocaleString()):""}</p><div class="block"><div class="score">${r.score}%</div><b>${r.fixture?"Prepared meaning-accuracy example":"AI-estimated meaning accuracy"}</b><p>Accurate = 1 · Partial = ½ · Omitted or contradicted = 0</p></div><h3>Idea breakdown</h3>${r.rows.map((item,i)=>`<div class="verdict"><b>Idea ${i+1} · ${item.points}/1</b><p>${esc(item.source)}</p><p class="strong">${item.evidence?"“"+esc(item.evidence)+"”":"No matching passage"}</p><p>${esc(item.reason)}</p></div>`).join("")}<h3>Next exercise</h3><p>${esc(r.suggestion)}</p><details><summary>Manuscript and transcripts</summary><h3>Source manuscript</h3><p>${esc(r.source)}</p><h3>Original transcription</h3><p>${esc(r.original)||"Manually entered attempt"}</p><h3>Reviewed transcript</h3><p>${esc(r.transcript)}</p></details><p class="note">Target ${clock(r.target)} · Speech ${r.speechSeconds==null?"unmeasured":clock(r.speechSeconds)} · Recording ${r.recordSeconds==null?"—":clock(r.recordSeconds)}</p>`;$("detail").showModal()}
+function showReport(r){if(!Array.isArray(r.rows))return showPending(r);$("report").innerHTML=`<small class="kicker">${r.fixture?"PREPARED CLASSROOM EXAMPLE":"SAVED PRACTICE"}</small><h2>${esc(r.title)}</h2><p class="meta">${esc(directionName(r.dir))} · ${esc(r.topic)}${r.difficulty?" · "+esc(r.difficulty):""}${r.date?" · "+esc(new Date(r.date).toLocaleString()):""}</p><div class="block"><div class="score">${r.score}%</div><b>${r.fixture?"Prepared meaning-accuracy example":"AI-estimated meaning accuracy"}</b><p>Accurate = 1 · Partial = ½ · Omitted or contradicted = 0</p></div><h3>Idea breakdown</h3>${r.rows.map((item,i)=>`<div class="verdict"><b>Idea ${i+1} · ${item.points}/1</b><p>${esc(item.source)}</p><p class="strong">${item.evidence?"“"+esc(item.evidence)+"”":"No matching passage"}</p><p>${esc(item.reason)}</p></div>`).join("")}<h3>Next exercise</h3><p>${esc(r.suggestion)}</p><details><summary>Manuscript and transcripts</summary><h3>Source manuscript</h3><p>${esc(r.source)}</p><h3>Original transcription</h3><p>${esc(r.original)||"Manually entered attempt"}</p><h3>Reviewed transcript</h3><p>${esc(r.transcript)}</p></details><p class="note">Target ${clock(r.target)} · Speech ${r.speechSeconds==null?"unmeasured":clock(r.speechSeconds)} · Recording ${r.recordSeconds==null?"—":clock(r.recordSeconds)}</p>`;if(!$("detail").open)$("detail").showModal();attachSavedAudio(r)}
 document.addEventListener("click",e=>{const id=e.target.closest("[data-id]")?.dataset.id;if(!id)return;const r=records.find(x=>x.id===id);if(r)showReport(r);else if(id.startsWith("example-")){const [,d,v]=id.split("-");showReport(example(d,v))}});
 document.querySelector(".close").onclick=()=>$("detail").close();
 function connectAudio(audio,session){
@@ -158,7 +159,7 @@ function newSession(speech,scroll=true){
  try{write("direction",dir)}catch{}
  attempt={...speech,id:crypto.randomUUID(),original:"",recordSeconds:0,listenSeconds:0,speechSeconds:null,blob:null,saved:false};
  hero(speech);
- $("session").hidden=false;$("session").innerHTML=`<small class="kicker">${esc(speech.mode.toUpperCase())}</small><h2>${esc(speech.title)}</h2><div class="wrap"><button id="regenerate" class="regenerate">↻ Regenerate</button><button id="easier" class="regenerate" ${speech.difficulty==="Beginner"?"disabled":""}>− 简单一点</button><button id="harder" class="regenerate" ${speech.difficulty==="Advanced"?"disabled":""}>+ 难一点</button></div><p class="meta">${esc(speech.topic)}${speech.difficulty?" · "+esc(speech.difficulty):""} · ${directionName(speech.dir)} · Target ${clock(speech.target)}${speech.estimatedSeconds?" · Estimated "+clock(speech.estimatedSeconds)+" at 1×":""}</p><div class="block"><h3>1. Listen to the source</h3>${speech.mode==="Classroom demo"?`<audio id="sampleAudio" controls preload="metadata" src="./commute-${speech.dir}.wav"></audio>`:`<button class="action" id="naturalVoice">Prepare natural voice</button> <button id="sourcePlay">▶ Listen now</button>`}<label class="speedControl">Playback speed <select id="playbackSpeed">${[0.75,1,1.25,1.5,2].map(rate=>`<option value="${rate}" ${rate===1?"selected":""}>${rate}×</option>`).join("")}</select></label>${speech.mode==="Classroom demo"?"":`<input type="range" id="sourceSeek" class="sourceSeek" aria-label="Source playback position" min="0" value="0" step="1">`}<p class="note" id="playtime"></p>${speech.mode==="Classroom demo"?"":`<p class="note" id="voiceStatus" role="status">Listen now uses your device voice immediately, without waiting for natural-voice synthesis. Prepare natural voice verifies actual audio against your target at 1×. Short or long manuscripts are rewritten; system playback is an untimed preview. First use saves a voice model (about 340 MB).</p>`}<details><summary>Reveal manuscript</summary><p id="manuscript">${esc(speech.source)}</p></details></div><div class="block sectionrule"><h3>2. Record your interpretation</h3><p class="note">Interpret into ${speech.dir==="en"?"Mandarin":"English"}. You can also enter your interpretation below.</p><label class="micChoice">Microphone <select id="microphone" aria-label="Microphone"><option value="">System default microphone</option></select></label><button id="testMic">Test microphone · 5s</button><div class="micMonitor"><meter id="micLevel" min="0" max="1" value="0" aria-label="Microphone input level"></meter><p id="micStatus" class="note" role="status">Speak after starting: the input bar should move.</p></div><div id="micTestResult" hidden><p class="note">Your five-second microphone test · replay to check your voice</p><audio id="micTestReplay" controls aria-label="Microphone test recording"></audio></div><details id="micHelp"><summary>Microphone connection &amp; help</summary><p id="micDiagnostics" class="note">Permission and input status appear after a test.</p><p class="note">In an embedded Codex / ChatGPT window, test this same link in standalone Edge or Chrome if no input arrives. Allow microphone access in both the browser and Windows Settings → Privacy &amp; security → Microphone, including desktop apps.</p><button id="copySiteLink">Copy link for Edge / Chrome</button></details><label class="micChoice">Or upload a recording <input id="uploadRecording" type="file" accept="audio/*"></label><div class="wrap block"><button id="record">● &nbsp; Start recording</button><button id="finishRecording" hidden>■ Finish recording</button><span id="rectime" class="note"></span></div><audio hidden id="replay" controls></audio><button id="retryASR" hidden>Retry transcription</button></div><div class="block sectionrule"><h3>3. Review and assess</h3><label for="corrected" class="field">Your reviewed transcript</label><p id="transcriptStatus" class="note" role="status">Finish a recording to transcribe it automatically.</p><textarea id="corrected" rows="5" placeholder="Your transcript appears here. You can correct recognition errors before assessment."></textarea><details id="originalBox" hidden><summary>Original transcription</summary><p id="originalText"></p></details><button class="action" id="evaluate">Assess and save attempt</button></div><div role="status" class="sessionstatus" id="sessionstatus"></div>`;
+ $("session").hidden=false;$("session").innerHTML=`<small class="kicker">${esc(speech.mode.toUpperCase())}</small><h2>${esc(speech.title)}</h2><div class="wrap"><button id="regenerate" class="regenerate">↻ Regenerate</button><button id="easier" class="regenerate" ${speech.difficulty==="Beginner"?"disabled":""}>− 简单一点</button><button id="harder" class="regenerate" ${speech.difficulty==="Advanced"?"disabled":""}>+ 难一点</button></div><p class="meta">${esc(speech.topic)}${speech.difficulty?" · "+esc(speech.difficulty):""} · ${directionName(speech.dir)} · Target ${clock(speech.target)}${speech.estimatedSeconds?" · Estimated "+clock(speech.estimatedSeconds)+" at 1×":""}</p><div class="block"><h3>1. Listen to the source</h3>${speech.mode==="Classroom demo"?`<audio id="sampleAudio" controls preload="metadata" src="./commute-${speech.dir}.wav"></audio>`:`<button class="action" id="naturalVoice">Prepare natural voice</button> <button id="sourcePlay">▶ Listen now</button>`}<label class="speedControl">Playback speed <select id="playbackSpeed">${[0.75,1,1.25,1.5,2].map(rate=>`<option value="${rate}" ${rate===1?"selected":""}>${rate}×</option>`).join("")}</select></label>${speech.mode==="Classroom demo"?"":`<input type="range" id="sourceSeek" class="sourceSeek" aria-label="Source playback position" min="0" value="0" step="1">`}<p class="note" id="playtime"></p>${speech.mode==="Classroom demo"?"":`<p class="note" id="voiceStatus" role="status">Listen now uses your device voice immediately, without waiting for natural-voice synthesis. Prepare natural voice verifies actual audio against your target at 1×. Short or long manuscripts are rewritten; system playback is an untimed preview. First use saves a voice model (about 340 MB).</p>`}<details><summary>Reveal manuscript</summary><p id="manuscript">${esc(speech.source)}</p></details></div><div class="block sectionrule"><h3>2. Record your interpretation</h3><p class="note">Interpret into ${speech.dir==="en"?"Mandarin":"English"}. You can also enter your interpretation below.</p><label class="micChoice">Microphone <select id="microphone" aria-label="Microphone"><option value="">System default microphone</option></select></label><button id="testMic">Test microphone · 5s</button><div class="micMonitor"><meter id="micLevel" min="0" max="1" value="0" aria-label="Microphone input level"></meter><p id="micStatus" class="note" role="status">Speak after starting: the input bar should move.</p></div><div id="micTestResult" hidden><p class="note">Your five-second microphone test · replay to check your voice</p><audio id="micTestReplay" controls aria-label="Microphone test recording"></audio></div><details id="micHelp"><summary>Microphone connection &amp; help</summary><p id="micDiagnostics" class="note">Permission and input status appear after a test.</p><p class="note">In an embedded Codex / ChatGPT window, test this same link in standalone Edge or Chrome if no input arrives. Allow microphone access in both the browser and Windows Settings → Privacy &amp; security → Microphone, including desktop apps.</p><button id="copySiteLink">Copy link for Edge / Chrome</button></details><label class="micChoice">Or upload a recording <input id="uploadRecording" type="file" accept="audio/*"></label><div class="wrap block"><button id="record">● &nbsp; Start recording</button><button id="finishRecording" hidden>■ Finish recording</button><span id="rectime" class="note"></span></div><audio hidden id="replay" controls></audio><button id="retryASR" hidden>Retry transcription</button></div><div class="block sectionrule"><h3>3. Review and assess</h3><label for="corrected" class="field">Your reviewed transcript</label><p id="transcriptStatus" class="note" role="status">Finish a recording to transcribe it automatically.</p><textarea id="corrected" rows="5" placeholder="Your transcript appears here. You can correct recognition errors before assessment."></textarea><details id="originalBox" hidden><summary>Original transcription</summary><p id="originalText"></p></details><button id="saveOnly">Save practice without assessment</button> <button class="action" id="evaluate">Assess and save attempt</button></div><div role="status" class="sessionstatus" id="sessionstatus"></div>`;
  $("uploadRecording").parentElement.insertAdjacentHTML('beforebegin',`<label class="micChoice">Transcription <select id="asrMode" aria-describedby="asrHelp"><option value="enhanced">增强 · Enhanced</option><option value="lightweight">轻量 · Lightweight</option></select></label><p id="asrHelp" class="note">Enhanced uses Whisper small with GPU acceleration (first download ≈586 MB, saved for reuse). Without a supported GPU, it uses lightweight Whisper tiny. Both languages stay on your device. Lightweight uses a smaller download but may miss more detail.</p>`);
  $("asrMode").value=read("asr-mode","enhanced")==="lightweight"?"lightweight":"enhanced";
  setTranscriptionMode($("asrMode").value);
@@ -198,7 +199,7 @@ function newSession(speech,scroll=true){
  $("testMic").onclick=testMicrophone;
  $("uploadRecording").onchange=uploadRecording;
  $("copySiteLink").onclick=async()=>{try{await navigator.clipboard.writeText(location.origin+"/");notice("Link copied. Paste it into standalone Edge or Chrome.")}catch{notice("Copy the address from your browser’s address bar.")}};
- $("finishRecording").onclick=finishRecording;$("record").onclick=record;$("retryASR").onclick=()=>recognizeTake();$("evaluate").onclick=evaluate;
+ $("finishRecording").onclick=finishRecording;$("record").onclick=record;$("retryASR").onclick=()=>recognizeTake();$("evaluate").onclick=()=>evaluate();$("saveOnly").onclick=()=>evaluate(true);$("corrected").oninput=()=>{attempt.saved=false;$("evaluate").textContent="Assess and save attempt"};
  if(scroll)$("session").scrollIntoView({behavior:"smooth",block:"start"});
 }
 async function generateSession(settings,isDaily=false){
@@ -385,19 +386,62 @@ async function recognizeTake(){
  try{
   const text=await transcribe(session.blob,session.dir,report);
   if(!text)throw Error("No speech detected.");
-  session.original=text;$("corrected").value=text;$("originalText").textContent=text;$("originalBox").hidden=false;
+  session.saved=false;session.original=text;$("corrected").value=text;$("originalText").textContent=text;$("originalBox").hidden=false;
   session.asrEngine=transcriptionEngine();
   report("Automatic transcript ready · "+session.asrEngine+". Correct any recognition errors before assessment.");
  }catch(error){
   $("retryASR").hidden=false;report("Transcription unavailable. "+error.message+" Your audio is kept; retry or enter the transcript manually.");
  }finally{busyState(false)}
 }
-async function evaluate(){
- if(attempt.saved)return showReport(attempt);
- const transcript=$("corrected").value.trim();if(!transcript){status("Enter or record an interpretation first.");$("corrected").focus();return}
- stopSpeech();busyState(true);
- try{const result=await assess(attempt,transcript,status);const {blob,...data}=attempt;const rec={...data,...result,date:new Date().toISOString(),transcript,saved:true};const updated=[rec,...read("history",[]).filter(r=>r.id!==rec.id)];write("history",updated);records=updated;attempt={...rec,blob};dashboard();if(location.hash==="#history")historyView();status("Analysis saved to practice history.");$("evaluate").textContent="View saved feedback";showReport(rec)}
- catch(e){status("Attempt could not be assessed and saved. "+e.message+" Your transcript is still here.")}finally{busyState(false);if(attempt.saved){$("corrected").disabled=true;$("record").disabled=true;$("retryASR").hidden=true}}
+function saveMetadata(rec){
+ const updated=[rec,...read("history",[]).filter(r=>r.id!==rec.id)];
+ write("history",updated);records=updated;dashboard();if(location.hash==="#history")historyView();
+}
+let reportAudioURL="";
+async function attachSavedAudio(r){
+ if(reportAudioURL)URL.revokeObjectURL(reportAudioURL);reportAudioURL="";
+ const box=document.createElement("div");$("report").append(box);
+ try{
+  const blob=await loadAttemptAudio(r.id);if(!box.isConnected||!blob)return;
+  reportAudioURL=URL.createObjectURL(blob);
+  const audio=document.createElement("audio");audio.controls=true;audio.src=reportAudioURL;
+  const download=document.createElement("a");download.href=reportAudioURL;download.download="interpretation-"+r.id+(blob.type.includes("wav")?".wav":".webm");download.textContent="Download saved recording";
+  box.append(audio,download);
+ }catch{box.textContent="Saved recording could not be opened in this browser."}
+}
+function showPending(r){
+ $("report").innerHTML='<small class="kicker">SAVED PRACTICE · NOT SCORED</small><h2>'+esc(r.title)+'</h2><p>Your practice is saved. No accuracy score has been assigned.</p><h3>Source manuscript</h3><p>'+esc(r.source)+'</p><h3>Reviewed transcript</h3><p>'+esc(r.transcript)+'</p><details><summary>Original transcription</summary><p>'+esc(r.original)+'</p></details><p>Recording '+clock(r.recordSeconds||0)+'</p><button id="retryAssessment">Retry assessment</button><p id="reportStatus" role="status"></p>';
+ $("retryAssessment").onclick=async()=>{
+  if(busy)return;
+  if(!r.transcript?.trim()){$("reportStatus").textContent="This saved attempt has audio only. Download the recording and upload it to a practice session to transcribe it.";return}
+  const button=$("retryAssessment"),out=$("reportStatus");button.disabled=true;busyState(true);
+  try{const result=await assess(r,r.transcript,text=>out.textContent=text);const checked={...r,...result,assessmentStatus:"complete"};saveMetadata(checked);if(attempt?.id===r.id)Object.assign(attempt,checked);showReport(checked)}
+  catch(e){out.textContent="Practice remains saved; assessment unavailable. "+e.message}
+  finally{busyState(false);button.disabled=false}
+ };
+ if(!$("detail").open)$("detail").showModal();attachSavedAudio(r);
+}
+async function evaluate(saveOnly=false){
+ if(busy)return;
+ const transcript=$("corrected").value.trim();
+ if(!transcript&&!attempt.blob){status("Enter or record an interpretation first.");return}
+ if(attempt.saved&&attempt.transcript===transcript&&Array.isArray(attempt.rows))return showReport(attempt);
+ stopSpeech();busyState(true);const session=attempt;
+ const {blob,rows,score,suggestion,...data}=session;
+ let rec={...data,date:session.date||new Date().toISOString(),transcript,saved:true,assessmentStatus:"pending"};
+ try{saveMetadata(rec)}catch(e){status("Browser storage could not save this practice. Your recording and transcript are still on this page. "+e.message);busyState(false);return}
+ Object.assign(session,rec);delete session.rows;delete session.score;delete session.suggestion;
+ let audioWarning="";
+ try{if(blob){await storeAttemptAudio(rec.id,blob);rec.audioSaved=true;saveMetadata(rec)}}
+ catch{audioWarning=" Recording storage failed; keep this page open and download your recording from the player."}
+ try{
+  status("Practice saved to history."+audioWarning);
+  if(saveOnly||!transcript){showReport(rec);return}
+  const result=await assess(session,transcript,text=>status("Practice already saved. "+text));
+  const checked={...rec,...result,assessmentStatus:"complete"};saveMetadata(checked);rec=checked;Object.assign(session,rec);
+  status("Practice and assessment saved."+audioWarning);showReport(rec);
+ }catch(e){status("Practice saved to history. Assessment unavailable: "+e.message+" You can retry from History."+audioWarning)}
+ finally{busyState(false);$("evaluate").textContent=Array.isArray(rec.rows)?"View saved feedback":"Retry assessment (practice saved)"}
 }
 $("date").textContent=new Intl.DateTimeFormat("en",{weekday:"short",month:"short",day:"numeric"}).format(new Date());
 window.addEventListener("storage",e=>{if(e.key==="relay-history"){records=read("history",[]);route()}});
