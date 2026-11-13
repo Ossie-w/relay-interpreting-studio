@@ -3,9 +3,9 @@ import {topics,weekdays,defaultPlan,directionName,clock,localDate,score,escapeHT
 import {generateSpeech,reviseSpeechDuration,assess,transcribe} from "./ai.js?v=20261113d";
 import {sourcePlayer} from "./playback.js?v=20261112";
 import {openMicrophone,microphoneProblem} from "./microphone.js";
-import {cachedTimedNarration,prepareTimedSpeech} from "./timed-narration.js";
+import {cachedTimedNarration,prepareTimedSpeech} from "./timed-narration.js?v=20261114a";
 import {playableRecording} from "./recording.js";
-import {cancelNarration} from "./narration.js";
+import {cancelNarration} from "./narration.js?v=20261114a";
 let narrationURL="",voiceJob=null,micTestURL="";
 const $=id=>document.getElementById(id);
 function read(key,fallback){try{return JSON.parse(localStorage.getItem("relay-"+key))??fallback}catch{return fallback}}

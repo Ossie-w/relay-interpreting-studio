@@ -1,4 +1,4 @@
-import {renderNarration} from "./narration.js";
+import {renderNarration} from "./narration.js?v=20261114a";
 import {audioFits,fitPCM,speechUnits} from "./timing.js";
 import {encodeWave} from "./recording.js";
 const CACHE="relay-timed-narration-v1";

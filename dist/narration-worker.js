@@ -1,8 +1,10 @@
 import {encodeWave} from "./recording.js";
 import {installVoiceModelCache} from "./model-cache.js";
+import {installVoiceAssets} from "./voice-assets.js";
 
 let ttsPromise=null,report=()=>{};
 const modelCache=installVoiceModelCache(text=>report(text));
+installVoiceAssets();
 self.onmessage=async ({data:{id,source,lang}})=>{
  report=status=>postMessage({id,status});
  try{

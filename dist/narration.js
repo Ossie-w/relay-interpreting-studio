@@ -37,7 +37,7 @@ export async function renderNarration(source,lang,status){
  navigator.storage?.persist?.().catch(()=>{});
  if(pending)throw Error("Another narration is still being prepared.");
  if(!worker){
-  worker=new Worker(new URL("./narration-worker.js",import.meta.url),{type:"module"});
+  worker=new Worker(new URL("./narration-worker.js?v=20261114a",import.meta.url),{type:"module"});
   worker.onerror=e=>{
    const job=pending;pending=null;worker?.terminate();worker=null;
    job?.reject(Error(e.message||"Unable to start the voice engine."));
