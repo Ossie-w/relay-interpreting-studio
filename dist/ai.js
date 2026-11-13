@@ -120,5 +120,5 @@ export async function assess(speech,transcript,status){
  }
  return validateAssessment(speech.ideas,transcript,{rows,suggestion:drill});
 }
-export {transcribeRecording as transcribe} from "./transcription.js?v=20261112";
+export {transcribeRecording as transcribe} from "./transcription.js?v=20261113c";
 

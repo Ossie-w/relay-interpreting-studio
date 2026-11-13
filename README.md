@@ -14,9 +14,9 @@ English–Mandarin consecutive interpreting practice. Use the Studio to choose a
 
 两处网站应发布同一份测试通过的 `dist` 内容。逐项核实发布结果与 GitHub 推送结果；任何一处失败都要明确告知用户该处仍停留的版本及原因，不得把部分成功称为全部同步。不将仓库改为公开，也不另建 GitHub Pages。后续发布先处理尚未完成的同步。
 
-当前状态：November 13 网站更新已发布至 Netlify 和 Sites（第 13 版），两站的 23 个静态文件内容一致，源码与发布记录同步 GitHub。Sites 认证恢复后已补发成功。详见 [发布记录](SHARING-AND-REHEARSAL.md)。
+当前发布记录见 [发布与排练说明](SHARING-AND-REHEARSAL.md)。两处公开网站使用相同 dist，GitHub 保持私有。
 
-请分享上面的 `netlify.app` 地址。原 Sites 地址也已同步 November 13 的更新（第 13 版）。GitHub 仓库按项目所有者要求保持私有，朋友无法访问源码仓库；这不会改变训练网站的公开权限。不要分享本地 `127.0.0.1`、编辑器预览或 GitHub 仓库链接来代替网站。2026-11-12 已重新应用 Sites 公开权限，并在未登录的全新 Chrome 会话中验证网站返回 HTTP 200、无需登录。
+请分享上面的 `netlify.app` 地址。原 Sites 地址也已同步 November 13 的更新。GitHub 仓库按项目所有者要求保持私有，朋友无法访问源码仓库；这不会改变训练网站的公开权限。不要分享本地 `127.0.0.1`、编辑器预览或 GitHub 仓库链接来代替网站。2026-11-12 已重新应用 Sites 公开权限，并在未登录的全新 Chrome 会话中验证网站返回 HTTP 200、无需登录。
 
 ## 2026-11-12：双向切换与生成恢复
 
@@ -124,4 +124,11 @@ Verified locally on November 13: native browser microphone capture and fallback,
 
 ## November 13: choose before generating
 
-On entry, neither the page nor Set up your practice starts AI generation. The hero button scrolls to the direction/topic/difficulty/duration form. Generate speech is the explicit generation action. Restoring a saved manuscript does not generate a new one. The live generation and scoring model is Qwen2.5-3B-Instruct-q4f16_1-MLC through WebLLM/WebGPU; narration uses Kokoro-82M-v1.1-zh-ONNX locally; transcription uses multilingual Whisper tiny through Transformers.js/WASM. Saved model files avoid repeat downloads, not loading or inference time. Length revisions and timed narration can require multiple local inference passes.
+On entry, neither the page nor Set up your practice starts AI generation. The hero button scrolls to the direction/topic/difficulty/duration form. Generate speech is the explicit generation action. Restoring a saved manuscript does not generate a new one. The live generation and scoring model is Qwen2.5-3B-Instruct-q4f16_1-MLC through WebLLM/WebGPU; narration uses Kokoro-82M-v1.1-zh-ONNX locally; transcription now offers multilingual Whisper small/WebGPU (Enhanced) and Whisper tiny/WASM (Lightweight). Saved model files avoid repeat downloads, not loading or inference time. Length revisions and timed narration can require multiple local inference passes.
+
+
+## November 13: enhanced browser transcription
+
+Enhanced uses multilingual Whisper small with WebGPU (Transformers.js 4.3.2, fp32 encoder / q4 decoder). Lightweight retains Whisper tiny q8/WASM (3.7.2), also used when WebGPU is unavailable. The selected mode is remembered; the completed transcript identifies the actual engine. A failed enhanced attempt keeps the recording for a lightweight retry. Model warmup and transcription share initialization without losing request status. Large weights are saved in IndexedDB blocks; no model is loaded just by opening the site or changing the mode.
+
+Real bilingual tests compared tiny, small and SenseVoice locally. See [measured results, tradeoffs and reproduction steps](ASR-COMPARISON.md). Enhanced is a quality improvement on the bundled synthetic examples, not a guarantee for every speaker. It requires about 586 MB on first use; browser storage can be cleared/evicted. First downloads still depend on external model/CDN connectivity. No server is required and recordings are not uploaded for recognition.

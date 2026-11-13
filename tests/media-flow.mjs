@@ -13,7 +13,7 @@ try{
  const errors=[];page.on("pageerror",e=>errors.push(e.message));
  let generates=0,failNext=false;
  await page.route(/\/ai\.js(?:\?.*)?$/,r=>r.fulfill({contentType:"text/javascript",body:
-  'export {transcribeRecording as transcribe} from "./transcription.js?v=20261112";'+
+  'export {transcribeRecording as transcribe} from "./transcription.js?v=20261113c";'+
   'export async function generateSpeech(dir,topic,target,status,difficulty){'+
   'const response=await fetch("/qa/generate");if(!response.ok)throw Error("Test failure");const n=await response.text();'+
   'return {dir,topic,target,difficulty,title:"Daily practice "+n,source:"The library opens at nine.",ideas:["The library opens at nine."],mode:"AI-generated"}}'+
