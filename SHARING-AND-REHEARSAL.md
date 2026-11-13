@@ -1,5 +1,13 @@
 # 发布与今晚演示
 
+## 已更新的 Netlify 网站（2026-11-13）
+
+- 正式网址：https://superlative-parfait-1e35c2.netlify.app/
+- 连接检查：https://superlative-parfait-1e35c2.netlify.app/check.html
+- 继续使用原项目 `24cae94f-8ba5-48b1-9eac-3ff3df60239e`，此次部署 `6af68fad10d34c98fc344785`；未创建新项目。
+- 已在未登录的独立 Chrome 会话确认 HTTP 200、新版入口脚本 `app.js?v=20261113`、检查页及内置练习音频。项目无密码保护。香港和大陆朋友的网络可达性仍需本人实测。
+- 本机 Netlify CLI 已经用户官方授权。后续更新只上传测试后的 `dist` 静态文件，并指定现有项目；不要上传整个仓库、账号配置或个人记录。
+
 ## 备用网址（需先登录托管账号）
 
 1. 打开 https://app.netlify.com/ ，用自己的邮箱或 GitHub 注册并登录。仓库不用公开，也不用授权连接整个源码仓库。

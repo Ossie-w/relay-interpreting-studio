@@ -2,9 +2,9 @@
 
 English–Mandarin consecutive interpreting practice. Use the Studio to choose a direction, topic and duration. The training plan and completed assessments are stored in the current browser.
 
-**公开训练网站 / Share with friends:** [打开 Relay](https://aussy-interpret-studio.aussy0828.chatgpt.site/)
+**公开训练网站 / Share with friends:** [打开 Relay](https://superlative-parfait-1e35c2.netlify.app/)
 
-请分享上面的 `chatgpt.site` 地址。GitHub 仓库按项目所有者要求保持私有，朋友无法访问源码仓库；这不会改变训练网站的公开权限。不要分享本地 `127.0.0.1`、编辑器预览或 GitHub 仓库链接来代替网站。2026-11-12 已重新应用 Sites 公开权限，并在未登录的全新 Chrome 会话中验证网站返回 HTTP 200、无需登录。
+请分享上面的 `netlify.app` 地址。原 Sites 地址仍保留，但尚未同步 November 13 的更新。GitHub 仓库按项目所有者要求保持私有，朋友无法访问源码仓库；这不会改变训练网站的公开权限。不要分享本地 `127.0.0.1`、编辑器预览或 GitHub 仓库链接来代替网站。2026-11-12 已重新应用 Sites 公开权限，并在未登录的全新 Chrome 会话中验证网站返回 HTTP 200、无需登录。
 
 ## 2026-11-12：双向切换与生成恢复
 
