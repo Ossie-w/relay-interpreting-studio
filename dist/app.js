@@ -1,6 +1,6 @@
 import {prepareTranscription,setTranscriptionMode,transcriptionEngine} from "./transcription.js?v=20261113c";
 import {topics,weekdays,defaultPlan,directionName,clock,localDate,score,escapeHTML as esc,demoSpeech,example} from "./practice.js";
-import {generateSpeech,reviseSpeechDuration,assess,transcribe} from "./ai.js?v=20261113c";
+import {generateSpeech,reviseSpeechDuration,assess,transcribe} from "./ai.js?v=20261113d";
 import {sourcePlayer} from "./playback.js?v=20261112";
 import {openMicrophone,microphoneProblem} from "./microphone.js";
 import {cachedTimedNarration,prepareTimedSpeech} from "./timed-narration.js";

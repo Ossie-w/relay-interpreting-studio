@@ -120,7 +120,7 @@ Difficulty uses an explicit bilingual sans-serif font stack. Listen now uses the
 
 The first visit stays interactive without downloading models. `check.html` checks device support and small configuration-file connections; it does not prove full model availability. Included practice is reachable before AI setup. See [sharing and rehearsal instructions](SHARING-AND-REHEARSAL.md) for manual hosting and tonight’s rehearsal.
 
-Verified locally on November 13: native browser microphone capture and fallback, real bilingual Kokoro synthesis and persistent cache, real English and Mandarin Whisper transcription, UI recording/replay, direction switching, history, duration correction, and diagnostic behavior with external hosts blocked. Synthetic/prerecorded microphone input is used in automated tests; the physical presentation microphone still needs a five-second test. Live WebLLM manuscript generation and live AI assessment have not been verified in this round; their UI and validation tests use controlled responses. Mandarin recognition needs review.
+Verified locally on November 13: native browser microphone capture and fallback, real bilingual Kokoro synthesis and persistent cache, real English and Mandarin Whisper transcription, UI recording/replay, direction switching, history, duration correction, and diagnostic behavior with external hosts blocked. Synthetic/prerecorded microphone input is used in automated tests; the physical presentation microphone still needs a five-second test. Live manuscript generation and timed audio were subsequently verified during the generation repair below. Live AI assessment has not been revalidated in this round; its UI and evidence validation tests use controlled responses. Mandarin recognition needs review.
 
 ## November 13: choose before generating
 
@@ -132,3 +132,8 @@ On entry, neither the page nor Set up your practice starts AI generation. The he
 Enhanced uses multilingual Whisper small with WebGPU (Transformers.js 4.3.2, fp32 encoder / q4 decoder). Lightweight retains Whisper tiny q8/WASM (3.7.2), also used when WebGPU is unavailable. The selected mode is remembered; the completed transcript identifies the actual engine. A failed enhanced attempt keeps the recording for a lightweight retry. Model warmup and transcription share initialization without losing request status. Large weights are saved in IndexedDB blocks; no model is loaded just by opening the site or changing the mode.
 
 Real bilingual tests compared tiny, small and SenseVoice locally. See [measured results, tradeoffs and reproduction steps](ASR-COMPARISON.md). Enhanced is a quality improvement on the bundled synthetic examples, not a guarantee for every speaker. It requires about 586 MB on first use; browser storage can be cleared/evicted. First downloads still depend on external model/CDN connectivity. No server is required and recordings are not uploaded for recognition.
+
+
+## November 13: manuscript generation failure fix
+
+The generator now requests complete spoken paragraphs, rejects outlines, recovers only complete passages when a model response hits its token limit, and adjusts overlong drafts at full sentence boundaries. Longer speeches use bounded continuation batches. Existing language checks, manuscript-length tolerance, prior-exercise preservation and actual timed-audio checks remain in force. See [cause, changes and verification](GENERATION-FIX.md). Entry scripts are versioned to load the repair on refresh.

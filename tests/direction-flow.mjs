@@ -28,7 +28,7 @@ try{
    const chinese=prompt.includes('Language: Simplified Mandarin Chinese');
    const count=Number(prompt.match(/Target for this response: ([0-9]+)/)[1]);
    const ideas=window.drafts?.length?window.drafts.shift():[(chinese?'学':'practice ').repeat(count)];
-   return {choices:[{message:{content:JSON.stringify({title:chinese?'中文练习':'English practice',ideas})}}]};
+   return {choices:[{message:{content:JSON.stringify({title:chinese?'中文练习':'English practice',paragraphs:ideas})}}]};
   }}}};
  }`}));
  await page.evaluate(()=>{
