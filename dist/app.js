@@ -397,5 +397,10 @@ async function evaluate(){
 $("date").textContent=new Intl.DateTimeFormat("en",{weekday:"short",month:"short",day:"numeric"}).format(new Date());
 window.addEventListener("storage",e=>{if(e.key==="relay-history"){records=read("history",[]);route()}});
 controls();route();
-if(!location.hash||location.hash==="#studio")openDaily();
+// Opening the site must not start a multi-gigabyte download or lock the UI.
+if(!location.hash||location.hash==="#studio"){
+ const saved=savedDaily(dir);
+ if(saved)newSession(saved,false);
+ else{$("heroDescription").textContent="Choose Generate speech to prepare a fresh practice. First-time AI setup downloads model files. You can check your device or try an included exercise first."}
+}
 

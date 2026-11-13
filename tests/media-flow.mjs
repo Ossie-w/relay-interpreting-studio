@@ -32,6 +32,7 @@ try{
   });
  });
  await page.goto(origin);
+ await page.locator("#generate").click();
  await page.waitForSelector("#regenerate");
  assert.equal(generates,1);
  assert.equal(await page.locator("#heroTitle").innerText(),await page.locator("#session h2").innerText());
@@ -49,8 +50,8 @@ try{
  await page.reload();await page.waitForSelector("#sampleAudio");
  assert.equal(voiceJobs,1,"Reopening the same manuscript must restore its audio without synthesis");
  assert.match(await page.locator("#voiceStatus").textContent(),/restored/);
- await page.evaluate(()=>{const saved=JSON.parse(localStorage.getItem("relay-daily"));saved.date="2000-01-01";localStorage.setItem("relay-daily",JSON.stringify(saved))});
- await page.reload();await page.waitForFunction(()=>document.querySelector("#session h2")?.textContent==="Daily practice 3");
+ await page.evaluate(()=>{const saved=JSON.parse(localStorage.getItem("relay-daily"));saved.date="2000-01-01";localStorage.setItem("relay-daily",JSON.stringify(saved));localStorage.setItem("relay-daily-en",JSON.stringify(saved))});
+ await page.reload();await page.locator("#generate").click();await page.waitForFunction(()=>document.querySelector("#session h2")?.textContent==="Daily practice 3");
  assert.equal(generates,3,"A new local day must generate a new recommendation");
  console.log("Daily recommendation, regeneration failure recovery and persistent narration cache passed.");
  // Exercise the actual IndexedDB weight cache across worker lifetimes, including
