@@ -28,7 +28,7 @@ function emptyDirection(){
  $("session").hidden=true;$("session").replaceChildren();
  $("heroTitle").textContent=dir==="en"?"Your English speech practice":"你的中文演讲练习";
  $("heroDescription").textContent=directionName(dir)+" · Choose your preferences below, then generate a speech.";
- $("demo").textContent="Generate this practice";
+ $("demo").textContent="Set up your practice";
 }
 function notice(msg){$("notice").textContent=msg;clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>$("notice").textContent="",6500)}
 function status(s){const node=$("sessionstatus");if(node) node.textContent=s}
@@ -214,7 +214,7 @@ async function generateSession(settings,isDaily=false){
   try{saveDaily(speech)}catch{notice("This browser could not save today’s recommendation.")}
  }catch(error){
   if(attempt)hero(attempt);
-  else{$("heroTitle").textContent="Your daily interpreting practice";$("demo").textContent="Retry daily recommendation"}
+  else{$("heroTitle").textContent="Your daily interpreting practice";$("demo").textContent="Set up your practice"}
   failedSettings={...settings};
   const message="Generation unavailable for "+directionName(settings.dir)+". "+error.message;
   $("generationMessage").textContent=message;$("generationError").hidden=false;status(message);
@@ -231,7 +231,7 @@ function openDaily(){
  if(saved){newSession(saved,false);return}
  return generateSession(dailySettings(),true);
 }
-$("demo").onclick=()=>attempt?openDaily():generateSession({dir,topic,target:Number($("duration").value),difficulty:$("difficulty").value},true);
+$("demo").onclick=()=>{if(attempt)return openDaily();$("setup").scrollIntoView({behavior:"smooth",block:"start"});$("directions").querySelector('[aria-pressed="true"]').focus({preventScroll:true})};
 $("retryGeneration").onclick=()=>{if(failedSettings)generateSession(failedSettings,true)};
 $("setup").onsubmit=e=>{
  e.preventDefault();

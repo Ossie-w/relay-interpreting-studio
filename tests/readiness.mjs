@@ -12,6 +12,11 @@ try{
  await page.route('**/*',r=>{if(!r.request().url().startsWith(origin)){external.push(r.request().url());return r.abort()}return r.continue()});
  await page.goto(origin);await page.waitForSelector('#topics button');
  assert.equal(await page.locator('#generate').isEnabled(),true);assert.deepEqual(external,[]);
+ await page.locator('#demo').click();
+ assert.equal(await page.locator('#session').isVisible(),false);
+ assert.equal(await page.locator('#generate').isEnabled(),true);
+ assert.deepEqual(external,[]);
+ assert.equal(await page.evaluate(()=>document.activeElement?.dataset.dir),'en');
  await page.goto(origin+'/check.html');await page.locator('#check').click();
  await page.waitForFunction(()=>document.querySelector('#results').textContent.includes('检查结束'));
  assert.match(await page.locator('#results').textContent(),/网站示例音频：连接成功/);
