@@ -4,6 +4,18 @@ English–Mandarin consecutive interpreting practice. Use the Studio to choose a
 
 **公开训练网站 / Share with friends:** [打开 Relay](https://superlative-parfait-1e35c2.netlify.app/)
 
+## 用户要求：每次更新同步三处
+
+从 2026-11-13 起，每次修改网站并验证后，都需要同时更新：
+
+1. Netlify 正式网站：https://superlative-parfait-1e35c2.netlify.app/ （保留现有项目和网址）。
+2. Sites 正式网站：https://aussy-interpret-studio.aussy0828.chatgpt.site/ （保留现有项目和公开权限）。
+3. GitHub 私有源码仓库：https://github.com/Ossie-w/relay-interpreting-studio （源码、相关测试和维护说明一起提交推送）。
+
+两处网站应发布同一份测试通过的 `dist` 内容。逐项核实发布结果与 GitHub 推送结果；任何一处失败都要明确告知用户该处仍停留的版本及原因，不得把部分成功称为全部同步。不将仓库改为公开，也不另建 GitHub Pages。后续发布先处理尚未完成的同步。
+
+当前状态：November 13 网站更新已发布至 Netlify，源码已推送 GitHub；Sites 仍为第 12 版，新的 `codex_auth` 认证与本机旧发布工具不兼容，尚待恢复发布通道后补发。详见 [发布记录](SHARING-AND-REHEARSAL.md)。
+
 请分享上面的 `netlify.app` 地址。原 Sites 地址仍保留，但尚未同步 November 13 的更新。GitHub 仓库按项目所有者要求保持私有，朋友无法访问源码仓库；这不会改变训练网站的公开权限。不要分享本地 `127.0.0.1`、编辑器预览或 GitHub 仓库链接来代替网站。2026-11-12 已重新应用 Sites 公开权限，并在未登录的全新 Chrome 会话中验证网站返回 HTTP 200、无需登录。
 
 ## 2026-11-12：双向切换与生成恢复
@@ -17,7 +29,7 @@ English–Mandarin consecutive interpreting practice. Use the Studio to choose a
 
 ## 从这个版本继续开发
 
-这是 Relay 英汉交替传译训练平台的课程项目。线上公开网站由 Sites 部署，GitHub 用来保存源码和版本历史。首次备份的标签是 `checkpoint-01`。[打开训练平台](https://aussy-interpret-studio.aussy0828.chatgpt.site/)
+这是 Relay 英汉交替传译训练平台的课程项目。线上网站同时维护 Netlify 和 Sites 两个入口，GitHub 用来保存源码和版本历史。首次备份的标签是 `checkpoint-01`。[打开训练平台](https://superlative-parfait-1e35c2.netlify.app/)
 
 在已登录 GitHub 的电脑上，运行以下命令即可取得完整项目并启动本地网站：
 
