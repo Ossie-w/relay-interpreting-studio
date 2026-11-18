@@ -1,12 +1,12 @@
 import {storeAttemptAudio,loadAttemptAudio} from "./attempt-audio.js";
 import {prepareTranscription,setTranscriptionMode,transcriptionEngine} from "./transcription.js?v=20261113c";
 import {topics,weekdays,defaultPlan,directionName,clock,localDate,score,escapeHTML as esc,demoSpeech,example} from "./practice.js";
-import {generateSpeech,reviseSpeechDuration,assess,transcribe} from "./ai.js?v=20261113d";
+import {generateSpeech,reviseSpeechDuration,assess,transcribe} from "./trial-ai.js";
 import {sourcePlayer} from "./playback.js?v=20261112";
 import {openMicrophone,microphoneProblem} from "./microphone.js";
-import {cachedTimedNarration,prepareTimedSpeech} from "./timed-narration.js?v=20261114a";
+import {cachedTimedNarration,prepareTimedSpeech} from "./timed-narration.js?v=20261118byok";
 import {playableRecording} from "./recording.js";
-import {cancelNarration} from "./narration.js?v=20261114a";
+import {cancelNarration} from "./trial-narration.js";
 let narrationURL="",voiceJob=null,micTestURL="";
 const $=id=>document.getElementById(id);
 function read(key,fallback){try{return JSON.parse(localStorage.getItem("relay-"+key))??fallback}catch{return fallback}}
@@ -33,7 +33,7 @@ function emptyDirection(){
 }
 function notice(msg){$("notice").textContent=msg;clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>$("notice").textContent="",6500)}
 function status(s){const node=$("sessionstatus");if(node) node.textContent=s}
-function busyState(value){busy=value;for(const button of document.querySelectorAll("[data-dir]"))button.disabled=value;for(const id of ["asrMode","generate","demo","retryGeneration","record","evaluate","saveOnly","retryASR","sourcePlay","finishSession","regenerate","easier","harder","testMic","uploadRecording","microphone","offlineExercise"])if($(id))$(id).disabled=value;if($("corrected"))$("corrected").disabled=value;if($("sampleAudio"))$("sampleAudio").controls=!value;if($("sourceSeek"))$("sourceSeek").disabled=value;if($("uploadRecording"))$("uploadRecording").disabled=value||!!attempt?.saved;if($("easier"))$("easier").disabled=value||attempt?.difficulty==="Beginner";if($("harder"))$("harder").disabled=value||attempt?.difficulty==="Advanced";}
+function busyState(value){busy=value;for(const button of document.querySelectorAll("[data-dir]"))button.disabled=value;for(const id of ["narrator","asrMode","generate","demo","retryGeneration","record","evaluate","saveOnly","retryASR","sourcePlay","finishSession","regenerate","easier","harder","testMic","uploadRecording","microphone","offlineExercise"])if($(id))$(id).disabled=value;if($("corrected"))$("corrected").disabled=value;if($("sampleAudio"))$("sampleAudio").controls=!value;if($("sourceSeek"))$("sourceSeek").disabled=value;if($("uploadRecording"))$("uploadRecording").disabled=value||!!attempt?.saved;if($("easier"))$("easier").disabled=value||attempt?.difficulty==="Beginner";if($("harder"))$("harder").disabled=value||attempt?.difficulty==="Advanced";}
 function activeTimer(){
  let elapsed=0, since=null;
  return {
@@ -108,15 +108,15 @@ function connectAudio(audio,session){
  audio.addEventListener("play",()=>$("replay").pause());
 }
 function mountNarration(session,blob,message){
- if(attempt!==session||!$("sourcePlay"))return;
+ if(attempt!==session||!($("sourcePlay")||$("sampleAudio")))return;
  speechRun?.stop();speechRun=null;
  const audio=document.createElement("audio");audio.id="sampleAudio";
  audio.controls=!busy||recorder?.state==="paused";
- $("sourcePlay").replaceWith(audio);$("sourceSeek")?.remove();$("naturalVoice")?.remove();
+ ($("sourcePlay")||$("sampleAudio")).replaceWith(audio);$("sourceSeek")?.remove();$("naturalVoice").hidden=true;
  connectAudio(audio,session);
  if(narrationURL)URL.revokeObjectURL(narrationURL);
  narrationURL=URL.createObjectURL(blob);audio.src=narrationURL;
- audio.playbackRate=Number($("playbackSpeed").value);
+ audio.preservesPitch=true;audio.playbackRate=Number($("playbackSpeed").value);
  $("voiceStatus").textContent=message;
 }
 async function prepareNarration(session){
@@ -159,7 +159,7 @@ function newSession(speech,scroll=true){
  try{write("direction",dir)}catch{}
  attempt={...speech,id:crypto.randomUUID(),original:"",recordSeconds:0,listenSeconds:0,speechSeconds:null,blob:null,saved:false};
  hero(speech);
- $("session").hidden=false;$("session").innerHTML=`<small class="kicker">${esc(speech.mode.toUpperCase())}</small><h2>${esc(speech.title)}</h2><div class="wrap"><button id="regenerate" class="regenerate">↻ Regenerate</button><button id="easier" class="regenerate" ${speech.difficulty==="Beginner"?"disabled":""}>− 简单一点</button><button id="harder" class="regenerate" ${speech.difficulty==="Advanced"?"disabled":""}>+ 难一点</button></div><p class="meta">${esc(speech.topic)}${speech.difficulty?" · "+esc(speech.difficulty):""} · ${directionName(speech.dir)} · Target ${clock(speech.target)}${speech.estimatedSeconds?" · Estimated "+clock(speech.estimatedSeconds)+" at 1×":""}</p><div class="block"><h3>1. Listen to the source</h3>${speech.mode==="Classroom demo"?`<audio id="sampleAudio" controls preload="metadata" src="./commute-${speech.dir}.wav"></audio>`:`<button class="action" id="naturalVoice">Prepare natural voice</button> <button id="sourcePlay">▶ Listen now</button>`}<label class="speedControl">Playback speed <select id="playbackSpeed">${[0.75,1,1.25,1.5,2].map(rate=>`<option value="${rate}" ${rate===1?"selected":""}>${rate}×</option>`).join("")}</select></label>${speech.mode==="Classroom demo"?"":`<input type="range" id="sourceSeek" class="sourceSeek" aria-label="Source playback position" min="0" value="0" step="1">`}<p class="note" id="playtime"></p>${speech.mode==="Classroom demo"?"":`<p class="note" id="voiceStatus" role="status">Listen now uses your device voice immediately, without waiting for natural-voice synthesis. Prepare natural voice verifies actual audio against your target at 1×. Short or long manuscripts are rewritten; system playback is an untimed preview. First use saves a voice model (about 340 MB).</p>`}<details><summary>Reveal manuscript</summary><p id="manuscript">${esc(speech.source)}</p></details></div><div class="block sectionrule"><h3>2. Record your interpretation</h3><p class="note">Interpret into ${speech.dir==="en"?"Mandarin":"English"}. You can also enter your interpretation below.</p><label class="micChoice">Microphone <select id="microphone" aria-label="Microphone"><option value="">System default microphone</option></select></label><button id="testMic">Test microphone · 5s</button><div class="micMonitor"><meter id="micLevel" min="0" max="1" value="0" aria-label="Microphone input level"></meter><p id="micStatus" class="note" role="status">Speak after starting: the input bar should move.</p></div><div id="micTestResult" hidden><p class="note">Your five-second microphone test · replay to check your voice</p><audio id="micTestReplay" controls aria-label="Microphone test recording"></audio></div><details id="micHelp"><summary>Microphone connection &amp; help</summary><p id="micDiagnostics" class="note">Permission and input status appear after a test.</p><p class="note">In an embedded Codex / ChatGPT window, test this same link in standalone Edge or Chrome if no input arrives. Allow microphone access in both the browser and Windows Settings → Privacy &amp; security → Microphone, including desktop apps.</p><button id="copySiteLink">Copy link for Edge / Chrome</button></details><label class="micChoice">Or upload a recording <input id="uploadRecording" type="file" accept="audio/*"></label><div class="wrap block"><button id="record">● &nbsp; Start recording</button><button id="finishRecording" hidden>■ Finish recording</button><span id="rectime" class="note"></span></div><audio hidden id="replay" controls></audio><button id="retryASR" hidden>Retry transcription</button></div><div class="block sectionrule"><h3>3. Review and assess</h3><label for="corrected" class="field">Your reviewed transcript</label><p id="transcriptStatus" class="note" role="status">Finish a recording to transcribe it automatically.</p><textarea id="corrected" rows="5" placeholder="Your transcript appears here. You can correct recognition errors before assessment."></textarea><details id="originalBox" hidden><summary>Original transcription</summary><p id="originalText"></p></details><button id="saveOnly">Save practice without assessment</button> <button class="action" id="evaluate">Assess and save attempt</button></div><div role="status" class="sessionstatus" id="sessionstatus"></div>`;
+ $("session").hidden=false;$("session").innerHTML=`<small class="kicker">${esc(speech.mode.toUpperCase())}</small><h2>${esc(speech.title)}</h2><div class="wrap"><button id="regenerate" class="regenerate">↻ Regenerate</button><button id="easier" class="regenerate" ${speech.difficulty==="Beginner"?"disabled":""}>− 简单一点</button><button id="harder" class="regenerate" ${speech.difficulty==="Advanced"?"disabled":""}>+ 难一点</button></div><p class="meta">${esc(speech.topic)}${speech.difficulty?" · "+esc(speech.difficulty):""} · ${directionName(speech.dir)} · Target ${clock(speech.target)}${speech.estimatedSeconds?" · Estimated "+clock(speech.estimatedSeconds)+" at 1×":""}</p><div class="block"><h3>1. Listen to the source</h3>${speech.mode==="Classroom demo"?`<audio id="sampleAudio" controls preload="metadata" src="./commute-${speech.dir}.wav"></audio>`:`<button class="action" id="naturalVoice">Prepare natural voice</button> <button id="sourcePlay">▶ Listen now</button>`}<label class="speedControl">Playback speed <select id="playbackSpeed">${[0.75,0.8,0.85,0.9,1,1.25,1.5,2].map(rate=>`<option value="${rate}" ${rate===1?"selected":""}>${rate}×</option>`).join("")}</select></label>${speech.mode==="Classroom demo"?"":`<input type="range" id="sourceSeek" class="sourceSeek" aria-label="Source playback position" min="0" value="0" step="1">`}<p class="note" id="playtime"></p>${speech.mode==="Classroom demo"?"":`<p class="note" id="voiceStatus" role="status">Listen now uses your device voice immediately, without waiting for natural-voice synthesis. Prepare natural voice verifies actual audio against your target at 1×. Short or long manuscripts are rewritten; system playback is an untimed preview. Your browser sends the source manuscript to DeepSeek for narration.</p>`}<details><summary>Reveal manuscript</summary><p id="manuscript">${esc(speech.source)}</p></details></div><div class="block sectionrule"><h3>2. Record your interpretation</h3><p class="note">Interpret into ${speech.dir==="en"?"Mandarin":"English"}. You can also enter your interpretation below.</p><label class="micChoice">Microphone <select id="microphone" aria-label="Microphone"><option value="">System default microphone</option></select></label><button id="testMic">Test microphone · 5s</button><div class="micMonitor"><meter id="micLevel" min="0" max="1" value="0" aria-label="Microphone input level"></meter><p id="micStatus" class="note" role="status">Speak after starting: the input bar should move.</p></div><div id="micTestResult" hidden><p class="note">Your five-second microphone test · replay to check your voice</p><audio id="micTestReplay" controls aria-label="Microphone test recording"></audio></div><details id="micHelp"><summary>Microphone connection &amp; help</summary><p id="micDiagnostics" class="note">Permission and input status appear after a test.</p><p class="note">In an embedded Codex / ChatGPT window, test this same link in standalone Edge or Chrome if no input arrives. Allow microphone access in both the browser and Windows Settings → Privacy &amp; security → Microphone, including desktop apps.</p><button id="copySiteLink">Copy link for Edge / Chrome</button></details><label class="micChoice">Or upload a recording <input id="uploadRecording" type="file" accept="audio/*"></label><div class="wrap block"><button id="record">● &nbsp; Start recording</button><button id="finishRecording" hidden>■ Finish recording</button><span id="rectime" class="note"></span></div><audio hidden id="replay" controls></audio><button id="retryASR" hidden>Retry transcription</button></div><div class="block sectionrule"><h3>3. Review and assess</h3><label for="corrected" class="field">Your reviewed transcript</label><p id="transcriptStatus" class="note" role="status">Finish a recording to transcribe it automatically.</p><textarea id="corrected" rows="5" placeholder="Your transcript appears here. You can correct recognition errors before assessment."></textarea><details id="originalBox" hidden><summary>Original transcription</summary><p id="originalText"></p></details><button id="saveOnly">Save practice without assessment</button> <button class="action" id="evaluate">Assess and save attempt</button></div><div role="status" class="sessionstatus" id="sessionstatus"></div>`;
  $("uploadRecording").parentElement.insertAdjacentHTML('beforebegin',`<label class="micChoice">Transcription <select id="asrMode" aria-describedby="asrHelp"><option value="enhanced">增强 · Enhanced</option><option value="lightweight">轻量 · Lightweight</option></select></label><p id="asrHelp" class="note">Enhanced uses Whisper small with GPU acceleration (first download ≈586 MB, saved for reuse). Without a supported GPU, it uses lightweight Whisper tiny. Both languages stay on your device. Lightweight uses a smaller download but may miss more detail.</p>`);
  $("asrMode").value=read("asr-mode","enhanced")==="lightweight"?"lightweight":"enhanced";
  setTranscriptionMode($("asrMode").value);
@@ -173,9 +173,20 @@ function newSession(speech,scroll=true){
  connectAudio($("sampleAudio"),attempt);
  }else{
   const session=attempt;
+  session.voice=read("deepseek-voice","stella")==="tide"?"tide":"stella";
+  $("naturalVoice").insertAdjacentHTML("beforebegin",'<label class="speedControl">自然语音 <select id="narrator"><option value="stella">海星 · 女声</option><option value="tide">暗潮 · 男声</option></select></label> ');
+  $("narrator").value=session.voice;
+  $("narrator").onchange=()=>{
+   if(session.blob||$("corrected").value.trim()){ $("narrator").value=session.voice;notice("Choose the narrator before recording.");return }
+   session.voice=$("narrator").value;try{write("deepseek-voice",session.voice)}catch{}
+   if($("sampleAudio")){$("sampleAudio").pause();$("sampleAudio").hidden=true}
+   $("naturalVoice").hidden=false;$("naturalVoice").textContent="Prepare natural voice";
+   $("voiceStatus").textContent="Prepare the selected voice to listen.";
+  };
+  const initialVoice=session.voice;
   $("naturalVoice").onclick=()=>prepareNarration(session);
   cachedTimedNarration(session).then(blob=>{
-   if(blob&&attempt===session&&!voiceJob)mountNarration(session,blob,"Saved natural voice restored. Ready to play.");
+   if(blob&&attempt===session&&session.voice===initialVoice&&!voiceJob)mountNarration(session,blob,"Saved natural voice restored. Ready to play.");
   });
   window.speechSynthesis?.getVoices();
   speechRun=sourcePlayer(attempt,$("sourcePlay"),$("sourceSeek"),$("playtime"),$("playbackSpeed"),status);
@@ -450,6 +461,6 @@ controls();route();
 if(!location.hash||location.hash==="#studio"){
  const saved=savedDaily(dir);
  if(saved)newSession(saved,false);
- else{$("heroDescription").textContent="Choose Generate speech to prepare a fresh practice. First-time AI setup downloads model files. You can check your device or try an included exercise first."}
+ else{$("heroDescription").textContent="Choose Generate speech to prepare a fresh practice. Use your own DeepSeek key to generate a manuscript. You can check your device or try an included exercise first."}
 }
 

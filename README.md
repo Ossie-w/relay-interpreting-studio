@@ -1,5 +1,7 @@
 # Relay · Interpreting Studio
 
+DeepSeek manuscript generation and natural narration use each visitor’s own API key. The browser authenticates directly with api.deepseek.com. Relay clears the input on submit and releases the credential after the operation, including error and cancellation paths. A cached narration needs no credential. Voice recordings and transcription are processed locally. Browser extensions and the browser’s own developer tools are outside the application’s control.
+
 English–Mandarin consecutive interpreting practice. Use the Studio to choose a direction, topic and duration. The training plan and completed assessments are stored in the current browser.
 
 **公开训练网站 / Share with friends:** [打开 Relay](https://superlative-parfait-1e35c2.netlify.app/)
