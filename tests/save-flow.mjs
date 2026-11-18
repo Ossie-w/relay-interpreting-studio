@@ -8,7 +8,7 @@ process.on('exit',()=>server.kill());const [ready]=await once(server.stdout,'dat
 const browser=await chromium.launch({executablePath:process.env.EDGE_PATH,headless:true});
 try{
  const page=await browser.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.route(/\/ai\.js\?/,r=>r.fulfill({contentType:'text/javascript',body:`
+ await page.route(/\/trial-ai\.js\?/,r=>r.fulfill({contentType:'text/javascript',body:`
  export async function generateSpeech(){};export async function reviseSpeechDuration(){};
  export async function transcribe(){return 'My recorded interpretation.'};
  export async function assess(s,t){if(!window.assessmentWorks)throw Error('Assessment evidence could not be verified.');return {rows:s.ideas.map(source=>({source,evidence:t,points:1,reason:'Meaning preserved'})),score:100,suggestion:'Practise the next passage.'}}

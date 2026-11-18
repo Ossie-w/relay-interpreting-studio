@@ -1,13 +1,14 @@
 const endpoints=Object.freeze({manuscript:'https://api.deepseek.com/chat/completions',voice:'https://api.deepseek.com/v1/tools/tts'});
 
-function askKey(label,signal){
+function askKey(label,signal,disclosure){
  return new Promise((resolve,reject)=>{
   const dialog=document.createElement('dialog');
   dialog.innerHTML='<form method="dialog" autocomplete="off"><h2>DeepSeek API Key</h2><p>This operation uses your DeepSeek balance. Your browser sends the key only to DeepSeek. Relay does not save it.</p><label>API key <input type="password" autocomplete="off" spellcheck="false" required></label><p><button type="submit" class="action">Continue</button> <button type="button">Cancel</button></p></form>';
+  if(disclosure)dialog.querySelector('p').textContent=disclosure;
   const input=dialog.querySelector('input');
   const finish=accepted=>{
    let value=accepted?input.value.trim():'';
-   input.value='';dialog.remove();signal.removeEventListener('abort',abort);
+   input.value='';dialog.close();dialog.remove();signal.removeEventListener('abort',abort);
    if(value)resolve(value);else reject(new DOMException('Operation cancelled.','AbortError'));
    value='';
   };
@@ -19,12 +20,12 @@ function askKey(label,signal){
   signal.addEventListener('abort',abort,{once:true});document.body.append(dialog);dialog.showModal();input.focus();
  });
 }
-export async function withDeepSeek(label,run,controller=new AbortController()){
+export async function withDeepSeek(label,run,controller=new AbortController(),disclosure){
  let key='';
  const cleanup=()=>{key='';controller.abort()};
  window.addEventListener('pagehide',cleanup,{once:true});
  try{
-  key=await askKey(label,controller.signal);
+  key=await askKey(label,controller.signal,disclosure);
   async function request(operation,body){
    if(!key||!Object.hasOwn(endpoints,operation))throw Error('Operation closed');
    const result=await fetch(endpoints[operation],{method:'POST',credentials:'omit',redirect:'error',referrerPolicy:'no-referrer',cache:'no-store',signal:controller.signal,headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify(body)});

@@ -1,7 +1,8 @@
 import {withDeepSeek} from './deepseek-access.js';
 import {fitManuscript} from './manuscript.js';
 import {targetUnits,speechUnits} from './timing.js';
-export {assess,transcribe} from './ai.js?v=20261113d';
+export {assess} from './assessment.js';
+export {transcribe} from './ai.js?v=20261113d';
 export async function generateSpeech(dir,topic,target,status,difficulty='Beginner',revision=null,request=null){
  if(!request)return withDeepSeek("Generate manuscript",call=>generateSpeech(dir,topic,target,status,difficulty,revision,call));
  status('Generating your manuscript with DeepSeek Flash…');

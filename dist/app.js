@@ -1,7 +1,8 @@
+import {renderAssessment} from './assessment-report.js';
 import {storeAttemptAudio,loadAttemptAudio} from "./attempt-audio.js";
 import {prepareTranscription,setTranscriptionMode,transcriptionEngine} from "./transcription.js?v=20261113c";
 import {topics,weekdays,defaultPlan,directionName,clock,localDate,score,escapeHTML as esc,demoSpeech,example} from "./practice.js";
-import {generateSpeech,reviseSpeechDuration,assess,transcribe} from "./trial-ai.js";
+import {generateSpeech,reviseSpeechDuration,assess,transcribe} from "./trial-ai.js?v=score1";
 import {sourcePlayer} from "./playback.js?v=20261112";
 import {openMicrophone,microphoneProblem} from "./microphone.js";
 import {cachedTimedNarration,prepareTimedSpeech} from "./timed-narration.js?v=20261118byok";
@@ -71,7 +72,7 @@ $("directions").onclick=e=>{
 };
 $("topics").onclick=e=>{if(e.target.dataset.topic){topic=e.target.dataset.topic;controls()}};
 $("duration").oninput=()=>$("target").textContent=clock(Number($("duration").value));
-function row(rec){return `<button class="row" data-id="${esc(rec.id)}"><span class="mini" aria-hidden="true">≋</span><span><strong>${esc(rec.title)}</strong><small>${rec.fixture?"Classroom example":esc(new Date(rec.date).toLocaleDateString())} · ${Number.isFinite(rec.score)?rec.score+"%":"Saved · awaiting assessment"}</small></span><em>›</em></button>`}
+function row(rec){return `<button class="row" data-id="${esc(rec.id)}"><span class="mini" aria-hidden="true">≋</span><span><strong>${esc(rec.title)}</strong><small>${rec.fixture?"Classroom example":esc(new Date(rec.date).toLocaleDateString())} · ${Number.isFinite(rec.score)?rec.score+"%":Number.isFinite(rec.contentScore)&&Array.isArray(rec.rows)?"Content "+rec.contentScore+"/80":"Saved · awaiting assessment"}</small></span><em>›</em></button>`}
 function dashboard(){
  const now=new Date(),seconds=records.filter(r=>localDate(new Date(r.date))===today()).reduce((n,r)=>n+(r.listenSeconds||0)+(r.recordSeconds||0),0);
  $("goal").innerHTML=`<div class="goalnum">${Math.floor(seconds/60)} <span>/ ${plan.minutes} min</span></div><div class="progress"><i style="width:${Math.min(100,seconds/(plan.minutes*60)*100)}%"></i></div><p class="muted">${plan.days.includes(now.getDay())?"Scheduled practice today":"Optional practice day"}</p><div class="week">${[1,2,3,4,5,6,0].map(d=>`<span class="${d===now.getDay()?"today":""}">${weekdays[d][0]}<b title="${weekdays[d]}">${plan.days.includes(d)?"•":"–"}</b></span>`).join("")}</div>`;
@@ -92,7 +93,7 @@ function route(){
  if(route==="plan")planView();if(route==="history")historyView();dashboard();
 }
 window.addEventListener("hashchange",()=>{if(recorder && recorder.state!=="inactive")finishRecording();stopSpeech();route()});
-function showReport(r){if(!Array.isArray(r.rows))return showPending(r);$("report").innerHTML=`<small class="kicker">${r.fixture?"PREPARED CLASSROOM EXAMPLE":"SAVED PRACTICE"}</small><h2>${esc(r.title)}</h2><p class="meta">${esc(directionName(r.dir))} · ${esc(r.topic)}${r.difficulty?" · "+esc(r.difficulty):""}${r.date?" · "+esc(new Date(r.date).toLocaleString()):""}</p><div class="block"><div class="score">${r.score}%</div><b>${r.fixture?"Prepared meaning-accuracy example":"AI-estimated meaning accuracy"}</b><p>Accurate = 1 · Partial = ½ · Omitted or contradicted = 0</p></div><h3>Idea breakdown</h3>${r.rows.map((item,i)=>`<div class="verdict"><b>Idea ${i+1} · ${item.points}/1</b><p>${esc(item.source)}</p><p class="strong">${item.evidence?"“"+esc(item.evidence)+"”":"No matching passage"}</p><p>${esc(item.reason)}</p></div>`).join("")}<h3>Next exercise</h3><p>${esc(r.suggestion)}</p><details><summary>Manuscript and transcripts</summary><h3>Source manuscript</h3><p>${esc(r.source)}</p><h3>Original transcription</h3><p>${esc(r.original)||"Manually entered attempt"}</p><h3>Reviewed transcript</h3><p>${esc(r.transcript)}</p></details><p class="note">Target ${clock(r.target)} · Speech ${r.speechSeconds==null?"unmeasured":clock(r.speechSeconds)} · Recording ${r.recordSeconds==null?"—":clock(r.recordSeconds)}</p>`;if(!$("detail").open)$("detail").showModal();attachSavedAudio(r)}
+function showReport(r){if(r.rubricVersion&&Array.isArray(r.rows)){const report=$("report");report.innerHTML=renderAssessment(r);if(!$("detail").open)$("detail").showModal();attachSavedAudio(r);return}if(!Array.isArray(r.rows))return showPending(r);$("report").innerHTML=`<small class="kicker">${r.fixture?"PREPARED CLASSROOM EXAMPLE":"SAVED PRACTICE"}</small><h2>${esc(r.title)}</h2><p class="meta">${esc(directionName(r.dir))} · ${esc(r.topic)}${r.difficulty?" · "+esc(r.difficulty):""}${r.date?" · "+esc(new Date(r.date).toLocaleString()):""}</p><div class="block"><div class="score">${r.score}%</div><b>${r.fixture?"Prepared meaning-accuracy example":"AI-estimated meaning accuracy"}</b><p>Accurate = 1 · Partial = ½ · Omitted or contradicted = 0</p></div><h3>Idea breakdown</h3>${r.rows.map((item,i)=>`<div class="verdict"><b>Idea ${i+1} · ${item.points}/1</b><p>${esc(item.source)}</p><p class="strong">${item.evidence?"“"+esc(item.evidence)+"”":"No matching passage"}</p><p>${esc(item.reason)}</p></div>`).join("")}<h3>Next exercise</h3><p>${esc(r.suggestion)}</p><details><summary>Manuscript and transcripts</summary><h3>Source manuscript</h3><p>${esc(r.source)}</p><h3>Original transcription</h3><p>${esc(r.original)||"Manually entered attempt"}</p><h3>Reviewed transcript</h3><p>${esc(r.transcript)}</p></details><p class="note">Target ${clock(r.target)} · Speech ${r.speechSeconds==null?"unmeasured":clock(r.speechSeconds)} · Recording ${r.recordSeconds==null?"—":clock(r.recordSeconds)}</p>`;if(!$("detail").open)$("detail").showModal();attachSavedAudio(r)}
 document.addEventListener("click",e=>{const id=e.target.closest("[data-id]")?.dataset.id;if(!id)return;const r=records.find(x=>x.id===id);if(r)showReport(r);else if(id.startsWith("example-")){const [,d,v]=id.split("-");showReport(example(d,v))}});
 document.querySelector(".close").onclick=()=>$("detail").close();
 function connectAudio(audio,session){
@@ -305,7 +306,7 @@ async function uploadRecording(event){
   if(decoded.quiet)throw Error("The uploaded file contains no usable sound.");
   const context=new AudioContext();let audio;
   try{audio=await context.decodeAudioData(await decoded.blob.arrayBuffer())}finally{await context.close()}
-  attempt.blob=decoded.blob;attempt.recordSeconds=audio.duration;attempt.original="";
+  attempt.pauseBoundaries=[];attempt.blob=decoded.blob;attempt.recordSeconds=audio.duration;attempt.original="";
   $("corrected").value="";$("originalBox").hidden=true;
   if(takeURL)URL.revokeObjectURL(takeURL);takeURL=URL.createObjectURL(attempt.blob);
   $("replay").src=takeURL;$("replay").hidden=false;$("replay").load();
@@ -353,7 +354,7 @@ async function finishRecording(){
  }
 }
 async function record(){
- if(recorder?.state==="recording"){recorder.pause();recordTimer.pause();recordingControls();return}
+ if(recorder?.state==="recording"){recorder.pause();recordTimer.pause();(attempt.pauseBoundaries??=[]).push(recordTimer.seconds());recordingControls();return}
  if(recorder?.state==="paused"){
   pauseSource();
   try{await recorder.resume();recordTimer.start();recordingControls()}
@@ -381,7 +382,7 @@ async function record(){
     performance.now()-lastSignal>3500?"Microphone opened, but no sound is arriving. Finish and run Test microphone; if using an embedded window, try standalone Edge or Chrome.":
     "Microphone: "+(recorder?.label||"connecting")+" · "+(level>0.001?"Sound detected":"Speak to check the input bar");
   },()=>{notice("Microphone disconnected. Finishing the audio captured so far.");finishRecording()});
-  recordTimer=timer;timer.start();recordingControls();
+  session.pauseBoundaries=[];recordTimer=timer;timer.start();recordingControls();
   prepareTranscription(text=>{if(attempt===session&&recorder)$("transcriptStatus").textContent=text});
   refreshMicrophones(recorder.deviceId);
  }catch(error){
@@ -418,6 +419,7 @@ async function attachSavedAudio(r){
   const audio=document.createElement("audio");audio.controls=true;audio.src=reportAudioURL;
   const download=document.createElement("a");download.href=reportAudioURL;download.download="interpretation-"+r.id+(blob.type.includes("wav")?".wav":".webm");download.textContent="Download saved recording";
   box.append(audio,download);
+  for(const b of $("report").querySelectorAll("[data-review-time]"))b.onclick=()=>{audio.currentTime=Number(b.dataset.reviewTime);audio.play().catch(()=>{})};
  }catch{box.textContent="Saved recording could not be opened in this browser."}
 }
 function showPending(r){
@@ -438,7 +440,7 @@ async function evaluate(saveOnly=false){
  if(!transcript&&!attempt.blob){status("Enter or record an interpretation first.");return}
  if(attempt.saved&&attempt.transcript===transcript&&Array.isArray(attempt.rows))return showReport(attempt);
  stopSpeech();busyState(true);const session=attempt;
- const {blob,rows,score,suggestion,...data}=session;
+ const {blob,rows,score,suggestion,rubricVersion,delivery,contentScore,bank,reference,accuracy,coverage,vocabulary,weakness,strength,...data}=session;
  let rec={...data,date:session.date||new Date().toISOString(),transcript,saved:true,assessmentStatus:"pending"};
  try{saveMetadata(rec)}catch(e){status("Browser storage could not save this practice. Your recording and transcript are still on this page. "+e.message);busyState(false);return}
  Object.assign(session,rec);delete session.rows;delete session.score;delete session.suggestion;
