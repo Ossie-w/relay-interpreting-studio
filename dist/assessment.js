@@ -1,4 +1,4 @@
-import {withDeepSeek} from './deepseek-access.js?v=score1';
+import {withDeepSeek} from './deepseek-access.js';
 import {loadAttemptAudio} from './attempt-audio.js';
 import {measureDelivery} from './delivery.js';
 
@@ -54,5 +54,5 @@ export async function assess(speech,transcript,status){
    }finally{await ctx.close()}}
   }catch{delivery={reason:'Recording could not be decoded. Check your audio and retry.'}}
   return {...report,assessmentModel:model,delivery,score:Number.isFinite(delivery.points)?report.contentScore+delivery.points:null};
- },undefined,'DeepSeek Pro uses your balance to assess the source and your confirmed transcript. Your audio is analysed on this device. The key goes only to DeepSeek for this operation.');
+ },undefined,'DeepSeek Pro uses your balance to assess the source and your confirmed transcript. Your audio is analysed on this device. The key goes only to DeepSeek and stays in tab memory until reload or exit.');
 }

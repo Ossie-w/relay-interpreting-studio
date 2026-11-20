@@ -44,7 +44,12 @@ function trimEdges(bytes) {
 }
 
 export async function narrate(text,voice,target,call){
- const parts=phrases(text);
+ const parts=[];
+ for(const phrase of phrases(text)){
+  const last=parts.at(-1);
+  if(last&&!last.paragraphEnd&&last.text.length+phrase.text.length<420){last.text+=" "+phrase.text;last.paragraphEnd=phrase.paragraphEnd;last.clause=phrase.clause}
+  else parts.push({...phrase});
+ }
  if(!parts.length||parts.length>150)throw Error('Invalid practice settings');
  const clips=new Array(parts.length);
  let next=0;
@@ -57,7 +62,7 @@ export async function narrate(text,voice,target,call){
    }catch(error){next=parts.length;throw error}
   }
  }
- const results=await Promise.allSettled(Array.from({length:Math.min(4,parts.length)},worker));
+ const results=await Promise.allSettled(Array.from({length:Math.min(2,parts.length)},worker));
  const failure=results.find(r=>r.status==='rejected');if(failure)throw failure.reason;
  const natural=clips.reduce((sum,clip)=>sum+clip.length/2,0);
  const gaps=parts.slice(0,-1).map(p=>p.clause?0.13:p.paragraphEnd?0.54:0.32);

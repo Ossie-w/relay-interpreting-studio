@@ -14,18 +14,18 @@ try{
   if(fail)return r.fulfill({status:401,body:'denied'});
   if(r.request().url().endsWith('/tts')){
    voiceCalls++;
-   const pcm=Buffer.alloc(24000*60*2);for(let i=0;i<pcm.length/2;i++)pcm.writeInt16LE(Math.round(Math.sin(i/15)*3500),i*2);
+   const pcm=Buffer.alloc(24000*30*2);for(let i=0;i<pcm.length/2;i++)pcm.writeInt16LE(Math.round(Math.sin(i/15)*3500),i*2);
    return r.fulfill({contentType:'audio/pcm',body:pcm});
   }
-  return r.fulfill({json:{choices:[{message:{content:JSON.stringify({title:'Private test',ideas:['One synthetic sentence.']})}}]}});
+  return r.fulfill({json:{choices:[{message:{content:JSON.stringify({title:'Private test',ideas:[('Students discuss how public libraries can extend evening hours safely. ').repeat(15)]})}}]}});
  });
  await p.goto(origin);await p.click('#generate');await p.locator('input[type=password]').fill(marker);
  await p.locator('dialog[open] [type=submit]').click();await p.waitForSelector('#naturalVoice');assert.equal(await p.locator('input[type=password]').count(),0);
- await p.click('#naturalVoice');await p.locator('input[type=password]').fill(marker);await p.locator('dialog[open] [type=submit]').click();
- await p.waitForSelector('#sampleAudio');assert.equal(voiceCalls,1);
- await p.click('#generate');await p.locator('dialog[open] [type=button]').click();await p.waitForSelector('#generationError:not([hidden])');
+ await p.click('#naturalVoice');
+ await p.waitForSelector('#sampleAudio');assert.ok(voiceCalls>0);
+ await p.reload();await p.click('#generate');await p.locator('dialog[open] [type=button]').click();await p.waitForSelector('#generationError:not([hidden])');
  fail=true;await p.click('#generate');await p.locator('input[type=password]').fill(marker);await p.locator('dialog[open] [type=submit]').click();await p.waitForFunction(()=>document.querySelector('#generationMessage').textContent.includes('401'));
  assert.equal(await p.locator('input[type=password]').count(),0);
  assert.ok(!(await p.evaluate(()=>JSON.stringify([localStorage,sessionStorage,document.body.innerHTML]))).includes(marker));
- assert.deepEqual([...new Set(destinations)],['api.deepseek.com']);console.log('PASS direct-only key routing, separate prompts, generated audio, cancellation, failure and cleanup');
+ assert.deepEqual([...new Set(destinations)],['api.deepseek.com']);console.log('PASS direct-only key routing, tab reuse and reload clearance, generated audio, cancellation, failure and cleanup');
 }finally{await browser.close();server.kill()}
