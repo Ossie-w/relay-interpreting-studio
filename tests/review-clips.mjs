@@ -16,7 +16,5 @@ await p.evaluate(async()=>{
  localStorage.setItem('relay-history',JSON.stringify([rec]));
 
 });await p.reload();await p.evaluate(()=>{const AudioClass=window.Audio;window.Audio=class extends AudioClass{constructor(src){super(src);window.testClip=this}};location.hash='#history'});await p.click('#history [data-id="clip-check"]');
-await p.locator('[data-sentence-clip] button').click();assert.equal(await p.locator('[data-sentence-clip] button').count(),1);
-await p.waitForFunction(()=>window.testClip?.ended);assert.ok(Math.abs(await p.evaluate(()=>window.testClip.duration)-1.2)<.01);
-console.log('PASS old report: only full utterance playable; 1.2s clip ends automatically.');
+await p.waitForSelector('#report .score');assert.equal(await p.locator('#report audio,[data-sentence-clip],[data-review-time]').count(),0);console.log('PASS legacy report has no replay controls');
 }finally{await browser.close();server.kill()}

@@ -15,3 +15,5 @@
 .herocopy{max-width:100%;overflow-wrap:anywhere}
 
 #difficulty,#difficulty option{font-family:"Segoe UI","PingFang SC","Microsoft YaHei","Noto Sans CJK SC",Arial,sans-serif;font-size:14px;font-weight:500;line-height:1.5}
+
+#detail[open]{display:flex;flex-direction:column;overflow:hidden}#detail>.close{align-self:flex-end;flex:none;z-index:1}#detail>#report{overflow:auto;min-height:0;overscroll-behavior:contain}.videoSetup{margin-bottom:1rem}.videoSetup label{display:block;margin:.8rem 0}.videoSetup input,.videoSetup textarea{display:block;width:100%}#insightResult{white-space:pre-line}

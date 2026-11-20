@@ -1,4 +1,4 @@
-import {utteranceEnd} from './review-clips.js';
+
 import {withDeepSeek} from './deepseek-access.js';
 import {encodeWave} from './recording.js';
 let worker=null,pending=null,warmupStatus=null,mode='enhanced',engine='';
@@ -38,7 +38,7 @@ function ensureWorker(){
   };
  }
 }
-export async function transcribeRecording(blob,dir,status){
+export async function transcribeRecording(blob,dir,status,selectedMode=mode){
  if(pending)throw Error("A recording is already being transcribed.");
  segments=[];
  status("Preparing your recording for automatic transcription…");
@@ -49,12 +49,13 @@ export async function transcribeRecording(blob,dir,status){
   const source=offline.createBufferSource();source.buffer=buffer;source.connect(offline.destination);source.start();
   samples=(await offline.startRendering()).getChannelData(0);
  }finally{await context.close()}
- if(mode==='cloud'){
+ if(selectedMode==='cloud'){
   engine='DeepSeek ASR';
   return withDeepSeek('Transcribe with DeepSeek',async request=>{
    const pieces=[];
    for(let start=0;start<samples.length;){
-    const end=utteranceEnd(samples,start,16000);
+    let end=Math.min(samples.length,start+100*16000);
+    if(end<samples.length){let best=Infinity;for(let i=end-32000,limit=end;i<limit;i+=320){let power=0;for(let j=i;j<i+320;j++)power+=samples[j]*samples[j];if(power<best){best=power;end=i+160}}}
     status('DeepSeek ASR · '+Math.round(start/16000)+' s / '+Math.round(samples.length/16000)+' s');
     const form=new FormData();form.append('file',encodeWave([samples.subarray(start,end)],16000).blob,'practice.wav');
     const result=await (await request('asr',form)).json();
@@ -62,7 +63,13 @@ export async function transcribeRecording(blob,dir,status){
     if(result.text.trim())segments.push({text:result.text.trim(),start:start/16000,end:end/16000});
     pieces.push(result.text.trim());start=end;
    }
-   return pieces.filter(Boolean).join('\n');
+   const joined=pieces.filter(Boolean).join(dir==='en'?'':' ');
+   const paragraphs=[];let current='';
+   for(const {segment} of new Intl.Segmenter(dir==='en'?'zh':'en',{granularity:'sentence'}).segment(joined)){
+    current+=segment;if(current.length>=(dir==='en'?120:420)){paragraphs.push(current.trim());current=''}
+   }
+   if(current.trim())paragraphs.push(current.trim());
+   return paragraphs.join('\n\n');
   });
  }
  navigator.storage?.persist?.().catch(()=>{});

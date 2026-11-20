@@ -1,4 +1,4 @@
-import {matchedClip} from './review-clips.js';
+import {setupVideo,setupInsights} from './learning.js';
 import {grade,renderAssessment} from './assessment-report.js';
 import {storeAttemptAudio,loadAttemptAudio} from "./attempt-audio.js";
 import {prepareTranscription,setTranscriptionMode,transcriptSegments,transcriptionEngine} from "./transcription.js?v=20261113c";
@@ -73,7 +73,7 @@ $("directions").onclick=e=>{
 };
 $("topics").onclick=e=>{if(e.target.dataset.topic){topic=e.target.dataset.topic;controls()}};
 $("duration").oninput=()=>$("target").textContent=clock(Number($("duration").value));
-function row(rec){return `<button class="row" data-id="${esc(rec.id)}"><span class="mini" aria-hidden="true">≋</span><span><strong>${esc(rec.title)}</strong><small>${rec.fixture?"Classroom example":esc(new Date(rec.date).toLocaleDateString())} · ${["relay-sentence-2","relay-sentence-3"].includes(rec.rubricVersion)?((rec.score==null?"内容 ":"综合 ")+grade(rec.score??rec.contentScore*1.25)):Number.isFinite(rec.score)?rec.score+"%":Number.isFinite(rec.contentScore)&&Array.isArray(rec.rows)?"Content "+rec.contentScore+"/80":"Saved · awaiting assessment"}</small></span><em>›</em></button>`}
+function row(rec){return `<button class="row" data-id="${esc(rec.id)}"><span class="mini" aria-hidden="true">≋</span><span><strong>${esc(rec.title)}</strong><small>${rec.fixture?"Classroom example":esc(new Date(rec.date).toLocaleDateString())} · ${["relay-sentence-2","relay-sentence-3","relay-level-4"].includes(rec.rubricVersion)?((rec.score==null?"内容 ":"综合 ")+grade(rec.score??rec.contentScore*1.25,rec)):Number.isFinite(rec.score)?rec.score+"%":Number.isFinite(rec.contentScore)&&Array.isArray(rec.rows)?"Content "+rec.contentScore+"/80":"Saved · awaiting assessment"}</small></span><em>›</em></button>`}
 function dashboard(){
  const now=new Date(),seconds=records.filter(r=>localDate(new Date(r.date))===today()).reduce((n,r)=>n+(r.listenSeconds||0)+(r.recordSeconds||0),0);
  $("goal").innerHTML=`<div class="goalnum">${Math.floor(seconds/60)} <span>/ ${plan.minutes} min</span></div><div class="progress"><i style="width:${Math.min(100,seconds/(plan.minutes*60)*100)}%"></i></div><p class="muted">${plan.days.includes(now.getDay())?"Scheduled practice today":"Optional practice day"}</p><div class="week">${[1,2,3,4,5,6,0].map(d=>`<span class="${d===now.getDay()?"today":""}">${weekdays[d][0]}<b title="${weekdays[d]}">${plan.days.includes(d)?"•":"–"}</b></span>`).join("")}</div>`;
@@ -84,6 +84,7 @@ function planView(){
  $("planForm").onsubmit=e=>{e.preventDefault();const f=new FormData(e.target),days=f.getAll("days").map(Number),themes=f.getAll("topics");if(!days.length||!themes.length)return notice("Choose at least one day and one topic.");const next={days,topics:themes,minutes:Number(f.get("minutes")),direction:f.get("direction")};try{write("plan",next);plan=next;dir=plan.direction;topic=plan.topics[0];controls();dashboard();notice("Daily plan saved.")}catch{notice("Browser storage unavailable. Your plan could not be saved.")}};
 }
 function historyView(){ $("history").innerHTML=`<article class="card"><h2>Your attempts</h2><p class="secondary block">${records.length?"Saved on this browser.":"Your completed practice will appear here."}</p>${records.map(row).join("")}</article><article class="card"><h2>Prepared examples</h2><button id="offlineExercise" class="block">Open offline practice</button><p class="secondary block">Prepared assessments for the same speech. Choose a direction to compare outcomes.</p><select id="examplesDir" aria-label="Example direction"><option value="en">English → Mandarin</option><option value="zh">Mandarin → English</option></select><div id="samples"></div></article>`;
+ setupInsights(records);
  $("offlineExercise").onclick=()=>{if(discard()){location.hash="#studio";newSession(demoSpeech($("examplesDir").value))}};
  const draw=()=>$("samples").innerHTML=["faithful","number","omission"].map((v,i)=>{const r=example($("examplesDir").value,v);return row({...r,title:["Faithful paraphrase","Changed number","Omitted idea"][i]})}).join("");$("examplesDir").onchange=draw;draw()}
 function route(){
@@ -94,7 +95,7 @@ function route(){
  if(route==="plan")planView();if(route==="history")historyView();dashboard();
 }
 window.addEventListener("hashchange",()=>{if(recorder && recorder.state!=="inactive")finishRecording();stopSpeech();route()});
-function showReport(r){if(r.rubricVersion&&Array.isArray(r.rows)){const report=$("report");report.innerHTML=renderAssessment(r);if(!$("detail").open)$("detail").showModal();attachSavedAudio(r);return}if(!Array.isArray(r.rows))return showPending(r);$("report").innerHTML=`<small class="kicker">${r.fixture?"PREPARED CLASSROOM EXAMPLE":"SAVED PRACTICE"}</small><h2>${esc(r.title)}</h2><p class="meta">${esc(directionName(r.dir))} · ${esc(r.topic)}${r.difficulty?" · "+esc(r.difficulty):""}${r.date?" · "+esc(new Date(r.date).toLocaleString()):""}</p><div class="block"><div class="score">${r.score}%</div><b>${r.fixture?"Prepared meaning-accuracy example":"AI-estimated meaning accuracy"}</b><p>Accurate = 1 · Partial = ½ · Omitted or contradicted = 0</p></div><h3>Idea breakdown</h3>${r.rows.map((item,i)=>`<div class="verdict"><b>Idea ${i+1} · ${item.points}/1</b><p>${esc(item.source)}</p><p class="strong">${item.evidence?"“"+esc(item.evidence)+"”":"No matching passage"}</p><p>${esc(item.reason)}</p></div>`).join("")}<h3>Next exercise</h3><p>${esc(r.suggestion)}</p><details><summary>Manuscript and transcripts</summary><h3>Source manuscript</h3><p>${esc(r.source)}</p><h3>Original transcription</h3><p>${esc(r.original)||"Manually entered attempt"}</p><h3>Reviewed transcript</h3><p>${esc(r.transcript)}</p></details><p class="note">Target ${clock(r.target)} · Speech ${r.speechSeconds==null?"unmeasured":clock(r.speechSeconds)} · Recording ${r.recordSeconds==null?"—":clock(r.recordSeconds)}</p>`;if(!$("detail").open)$("detail").showModal();attachSavedAudio(r)}
+function showReport(r){if(r.rubricVersion&&Array.isArray(r.rows)){const report=$("report");report.innerHTML=renderAssessment(r);if(!$("detail").open)$("detail").showModal();return}if(!Array.isArray(r.rows))return showPending(r);$("report").innerHTML=`<small class="kicker">${r.fixture?"PREPARED CLASSROOM EXAMPLE":"SAVED PRACTICE"}</small><h2>${esc(r.title)}</h2><p class="meta">${esc(directionName(r.dir))} · ${esc(r.topic)}${r.difficulty?" · "+esc(r.difficulty):""}${r.date?" · "+esc(new Date(r.date).toLocaleString()):""}</p><div class="block"><div class="score">${r.score}%</div><b>${r.fixture?"Prepared meaning-accuracy example":"AI-estimated meaning accuracy"}</b><p>Accurate = 1 · Partial = ½ · Omitted or contradicted = 0</p></div><h3>Idea breakdown</h3>${r.rows.map((item,i)=>`<div class="verdict"><b>Idea ${i+1} · ${item.points}/1</b><p>${esc(item.source)}</p><p class="strong">${item.evidence?"“"+esc(item.evidence)+"”":"No matching passage"}</p><p>${esc(item.reason)}</p></div>`).join("")}<h3>Next exercise</h3><p>${esc(r.suggestion)}</p><details><summary>Manuscript and transcripts</summary><h3>Source manuscript</h3><p>${esc(r.source)}</p><h3>Original transcription</h3><p>${esc(r.original)||"Manually entered attempt"}</p><h3>Reviewed transcript</h3><p>${esc(r.transcript)}</p></details><p class="note">Target ${clock(r.target)} · Speech ${r.speechSeconds==null?"unmeasured":clock(r.speechSeconds)} · Recording ${r.recordSeconds==null?"—":clock(r.recordSeconds)}</p>`;if(!$("detail").open)$("detail").showModal();}
 document.addEventListener("click",e=>{const id=e.target.closest("[data-id]")?.dataset.id;if(!id)return;const r=records.find(x=>x.id===id);if(r)showReport(r);else if(id.startsWith("example-")){const [,d,v]=id.split("-");showReport(example(d,v))}});
 document.querySelector(".close").onclick=()=>$("detail").close();
 function connectAudio(audio,session){
@@ -163,6 +164,12 @@ function newSession(speech,scroll=true){
  hero(speech);
  $("session").hidden=false;$("session").innerHTML=`<small class="kicker">${esc(speech.mode.toUpperCase())}</small><h2>${esc(speech.title)}</h2><div class="wrap"><button id="regenerate" class="regenerate">↻ Regenerate</button><button id="easier" class="regenerate" ${speech.difficulty==="Beginner"?"disabled":""}>− 简单一点</button><button id="harder" class="regenerate" ${speech.difficulty==="Advanced"?"disabled":""}>+ 难一点</button></div><p class="meta">${esc(speech.topic)}${speech.difficulty?" · "+esc(speech.difficulty):""} · ${directionName(speech.dir)} · Target ${clock(speech.target)}${speech.estimatedSeconds?" · Estimated "+clock(speech.estimatedSeconds)+" at 1×":""}</p><div class="block"><h3>1. Listen to the source</h3>${speech.mode==="Classroom demo"?`<audio id="sampleAudio" controls preload="metadata" src="./commute-${speech.dir}.wav"></audio>`:`<button class="action" id="naturalVoice">Prepare natural voice</button> <button id="sourcePlay">▶ Listen now</button>`}<label class="speedControl">Playback speed <select id="playbackSpeed">${[0.75,0.8,0.85,0.9,1,1.25,1.5,2].map(rate=>`<option value="${rate}" ${rate===1?"selected":""}>${rate}×</option>`).join("")}</select></label>${speech.mode==="Classroom demo"?"":`<input type="range" id="sourceSeek" class="sourceSeek" aria-label="Source playback position" min="0" value="0" step="1">`}<p class="note" id="playtime"></p>${speech.mode==="Classroom demo"?"":`<p class="note" id="voiceStatus" role="status">Listen now uses your device voice immediately, without waiting for natural-voice synthesis. Prepare natural voice verifies actual audio against your target at 1×. Short or long manuscripts are rewritten; system playback is an untimed preview. Your browser sends the source manuscript to DeepSeek for narration.</p>`}<details><summary>Reveal manuscript</summary><p id="manuscript">${esc(speech.source)}</p><label>向 DeepSeek 提出修改 <textarea id="followup" rows="2" maxlength="1600" placeholder="例如：保留主题，把第二段改成对话。"></textarea></label><button type="button" id="sendRevision">发送并改写</button></details></div><div class="block sectionrule"><h3>2. Record your interpretation</h3><p class="note">Interpret into ${speech.dir==="en"?"Mandarin":"English"}. You can also enter your interpretation below.</p><details id="recordSettings"><summary>麦克风、录音上传与转写设置</summary><label class="micChoice">Microphone <select id="microphone" aria-label="Microphone"><option value="">System default microphone</option></select></label><button id="testMic">Test microphone · 5s</button><div class="micMonitor"><meter id="micLevel" min="0" max="1" value="0" aria-label="Microphone input level"></meter><p id="micStatus" class="note" role="status">Speak after starting: the input bar should move.</p></div><div id="micTestResult" hidden><p class="note">Your five-second microphone test · replay to check your voice</p><audio id="micTestReplay" controls aria-label="Microphone test recording"></audio></div><details id="micHelp"><summary>Microphone connection &amp; help</summary><p id="micDiagnostics" class="note">Permission and input status appear after a test.</p><p class="note">In an embedded Codex / ChatGPT window, test this same link in standalone Edge or Chrome if no input arrives. Allow microphone access in both the browser and Windows Settings → Privacy &amp; security → Microphone, including desktop apps.</p><button id="copySiteLink">Copy link for Edge / Chrome</button></details><label class="micChoice">Or upload a recording <input id="uploadRecording" type="file" accept="audio/*"></label></details><div class="wrap block"><button id="record">● &nbsp; Start recording</button><button id="finishRecording" hidden>■ Finish recording</button><span id="rectime" class="note"></span></div><audio hidden id="replay" controls></audio><button id="retryASR" hidden>Retry transcription</button></div><div class="block sectionrule"><h3>3. Review and assess</h3><label for="corrected" class="field">Your reviewed transcript</label><p id="transcriptStatus" class="note" role="status">Finish a recording to transcribe it automatically.</p><textarea id="corrected" rows="5" placeholder="Your transcript appears here. You can correct recognition errors before assessment."></textarea><details id="originalBox" hidden><summary>Original transcription</summary><p id="originalText"></p></details><button id="saveOnly">Save practice without assessment</button> <button class="action" id="evaluate">Assess and save attempt</button><small>Scoring sends the source and reviewed transcript to DeepSeek Pro using your balance. Cloud transcription sends audio only when selected.</small></div><div role="status" class="sessionstatus" id="sessionstatus"></div>`;
  $("uploadRecording").parentElement.insertAdjacentHTML('beforebegin',`<label class="micChoice">Transcription <select id="asrMode" aria-describedby="asrHelp"><option value="cloud">DeepSeek · 发送本次录音至云端</option><option value="enhanced">增强 · Enhanced</option><option value="lightweight">轻量 · Lightweight</option></select></label><p id="asrHelp" class="note">Enhanced uses Whisper small with GPU acceleration (first download ≈586 MB, saved for reuse). Without a supported GPU, it uses lightweight Whisper tiny. Whisper runs locally. Select DeepSeek to send your recording directly to DeepSeek for paid transcription. Lightweight uses a smaller download but may miss more detail.</p>`);
+ if(speech.videoId&&/^[A-Za-z0-9_-]{11}$/.test(speech.videoId)){
+  const player=document.createElement('iframe');player.title='YouTube practice video';player.src='https://www.youtube-nocookie.com/embed/'+speech.videoId;player.style.cssText='width:100%;aspect-ratio:16/9;border:0';player.allowFullscreen=true;
+  $('playbackSpeed').closest('.block').prepend(player);
+  const details=document.createElement('details'),summary=document.createElement('summary'),body=document.createElement('p');
+  summary.textContent='视频逐句参考译文';body.textContent=speech.pairs.map(p=>p.source+'\n'+p.translation).join('\n\n');details.append(summary,body);$('manuscript').parentElement.after(details);
+ }
  $("sendRevision").onclick=()=>{const message=$("followup").value.trim();if(!message)return;$("briefMessage").value=message;generateSession({dir:speech.dir,topic:speech.topic,target:speech.target,difficulty:speech.difficulty})};
  const recordingButtons=$("record").parentElement;
  const playback=$("playbackSpeed").closest(".block");
@@ -177,6 +184,8 @@ function newSession(speech,scroll=true){
  };
  if($("sampleAudio")){
  connectAudio($("sampleAudio"),attempt);
+ }else if(speech.videoId){
+  for(const id of ["sourcePlay","naturalVoice","sourceSeek","voiceStatus","playbackSpeed","regenerate","easier","harder","followup","sendRevision"]){const control=$(id);if(control)(control.closest("label")||control).hidden=true}
  }else{
   const session=attempt;
   session.voice=read("deepseek-voice","stella")==="tide"?"tide":"stella";
@@ -414,51 +423,9 @@ function saveMetadata(rec){
  const updated=[rec,...read("history",[]).filter(r=>r.id!==rec.id)];
  write("history",updated);records=updated;dashboard();if(location.hash==="#history")historyView();
 }
-let reportAudioURL="";
-async function attachSavedAudio(r){
- if(reportAudioURL)URL.revokeObjectURL(reportAudioURL);reportAudioURL="";
- const box=document.createElement("div");$("report").append(box);
- try{
-  const blob=await loadAttemptAudio(r.id);if(!box.isConnected)return;if(!blob){box.textContent="此记录未找到可回听的录音。";return}
-  reportAudioURL=URL.createObjectURL(blob);
-  const audio=document.createElement("audio");audio.controls=true;audio.src=reportAudioURL;
-  const download=document.createElement("a");download.href=reportAudioURL;download.download="interpretation-"+r.id+(blob.type.includes("wav")?".wav":".webm");download.textContent="Download saved recording";
-  box.append(audio,download);
-  const context=new OfflineAudioContext(1,1,24000);
-  const buffer=await context.decodeAudioData(await blob.arrayBuffer());
-  if(!box.isConnected)return;
-  let clip=null,clipURL='';
-  const stop=()=>{if(clip){clip.pause();clip=null}if(clipURL){URL.revokeObjectURL(clipURL);clipURL=''}};
-  $('detail').addEventListener('close',stop,{once:true});
-  audio.onplay=stop;
-  const status=document.createElement('p');status.setAttribute('role','status');box.append(status);
-  const bind=(button,start,end)=>{
-   if(!Number.isFinite(start)||!Number.isFinite(end)||start<0||end<=start||end>buffer.duration+.05)return false;
-   const samples=buffer.getChannelData(0).subarray(Math.round(start*buffer.sampleRate),Math.round(end*buffer.sampleRate));
-   if(!samples.some(x=>Math.abs(x)>.001))return false;
-   button.hidden=false;
-   button.onclick=async()=>{stop();audio.pause();try{
-    const {encodeWave}=await import('./recording.js');
-    if(!box.isConnected||!$('detail').open)return;
-    stop();clipURL=URL.createObjectURL(encodeWave([samples],buffer.sampleRate).blob);
-    clip=new Audio(clipURL);clip.onended=stop;await clip.play();
-   }catch{status.textContent='片段未能播放，请使用完整录音播放器重试。'}};
-   return true;
-  };
-  for(const b of $('report').querySelectorAll('[data-review-time]'))bind(b,Number(b.dataset.reviewTime),Number(b.dataset.reviewEnd));
-  for(const slot of $('report').querySelectorAll('[data-sentence-clip]')){
-   const row=r.rows[Number(slot.dataset.sentenceClip)];
-   if(!row.evidence)continue;
-   const range=matchedClip(row.evidence,r.segments);
-   const button=document.createElement('button');
-   if(range&&bind(button,range.start,range.end)){
-    button.textContent='▶ 回听本句 · '+clock(range.start)+' – '+clock(range.end);slot.append(button);
-   }else slot.textContent='未能可靠定位本句，可回听完整录音。';
-  }
- }catch{box.textContent="Saved recording could not be opened in this browser."}
-}
 function showPending(r){
  $("report").innerHTML='<small class="kicker">SAVED PRACTICE · NOT SCORED</small><h2>'+esc(r.title)+'</h2><p>Your practice is saved. No accuracy score has been assigned.</p><h3>Source manuscript</h3><p>'+esc(r.source)+'</p><h3>Reviewed transcript</h3><p>'+esc(r.transcript)+'</p><details><summary>Original transcription</summary><p>'+esc(r.original)+'</p></details><p>Recording '+clock(r.recordSeconds||0)+'</p><button id="retryAssessment">Retry assessment</button><p id="reportStatus" role="status"></p>';
+ if(r.audioSaved){const link=document.createElement("a");loadAttemptAudio(r.id).then(blob=>{if(!blob||!$("reportStatus")?.isConnected||!$("detail").open)return;const url=URL.createObjectURL(blob);link.href=url;link.download="interpretation-"+r.id+".wav";link.textContent="Download saved recording";$("report").append(link);$("detail").addEventListener("close",()=>URL.revokeObjectURL(url),{once:true})}).catch(()=>{})}
  $("retryAssessment").onclick=async()=>{
   if(busy)return;
   if(!r.transcript?.trim()){$("reportStatus").textContent="This saved attempt has audio only. Download the recording and upload it to a practice session to transcribe it.";return}
@@ -467,7 +434,7 @@ function showPending(r){
   catch(e){out.textContent="Practice remains saved; assessment unavailable. "+e.message}
   finally{busyState(false);button.disabled=false}
  };
- if(!$("detail").open)$("detail").showModal();attachSavedAudio(r);
+ if(!$("detail").open)$("detail").showModal();
 }
 async function evaluate(saveOnly=false){
  if(busy)return;
@@ -494,6 +461,7 @@ async function evaluate(saveOnly=false){
 $("date").textContent=new Intl.DateTimeFormat("en",{weekday:"short",month:"short",day:"numeric"}).format(new Date());
 window.addEventListener("storage",e=>{if(e.key==="relay-history"){records=read("history",[]);route()}});
 controls();route();
+setupVideo(()=>({dir,difficulty:$("difficulty").value}),speech=>{if(discard()){newSession(speech);return true}return false});
 // Opening the site must not start a multi-gigabyte download or lock the UI.
 if(!location.hash||location.hash==="#studio"){
  const saved=savedDaily(dir);

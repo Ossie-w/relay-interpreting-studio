@@ -22,6 +22,8 @@ try{
   await page.route('https://api.deepseek.com/chat/completions',r=>{
    if(failure==='401')return r.fulfill({status:401,body:'Invalid'});
    if(failure==='network')return r.abort('failed');
+   const payload=r.request().postDataJSON();
+   if(payload.messages[0].content.includes('Independently audit'))return r.fulfill({json:{choices:[{message:{content:JSON.stringify({checks:JSON.parse(payload.messages[1].content).pairs.map(p=>({id:p.id,missing:'',expression:'',note:''}))})}}]}});
    const extract=r.request().postDataJSON().messages[0].content.includes('Extract the distinct');
    if(extract)extractions++;
    const value=extract?{units:['Transit update']}:{rows:JSON.parse(r.request().postDataJSON().messages[1].content).units.map((_,i)=>({unit:i+1,coverage:2,accuracy:2,vocabulary:2,evidence:[1],quote:"这座城市明年将增加公交车。",reason:"Faithful"})),weakness:'Practise numbers',strength:'Clear facts',suggestion:'Repeat the figures',reference:'交通简报',bank:Array.from({length:5},(_,i)=>({source:'Source '+i,target:'Target '+i}))};
@@ -62,7 +64,7 @@ try{
   failure='network';await page.click('#retryAssessment');await key();await page.waitForFunction(()=>document.querySelector('#reportStatus').textContent.includes('remains saved'));
   failure='';await page.click('#retryAssessment');await page.waitForSelector('#report .score');
   assert.match(await page.locator('#report .score').innerText(),/A · 熟练/);assert.equal(extractions,0);
-  await page.reload();await page.locator('#history [data-id]').first().click();await page.waitForSelector('#report audio');
+  await page.reload();await page.locator('#history [data-id]').first().click();await page.waitForSelector('#report .score');assert.equal(await page.locator('#report audio').count(),0);
   assert.match(await page.locator('#report').innerText(),/Word bank/);assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('relay-history')).length),1);
   console.log(compatibility?"Native fallback":"Worklet + native capture",signal);
   if(process.env.QA_SCREENSHOT)await page.screenshot({path:process.env.QA_SCREENSHOT,fullPage:true});

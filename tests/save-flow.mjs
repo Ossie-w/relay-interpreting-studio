@@ -27,9 +27,9 @@ try{
  const wav=await page.evaluate(async()=>{const {encodeWave}=await import('./recording.js');const pcm=new Float32Array(24000);for(let i=0;i<pcm.length;i++)pcm[i]=Math.sin(i*2*Math.PI*440/24000)*.2;return Array.from(new Uint8Array(await encodeWave([pcm],24000).blob.arrayBuffer()))});
  await page.locator('#uploadRecording').setInputFiles({name:'test.wav',mimeType:'audio/wav',buffer:Buffer.from(wav)});
  await page.waitForFunction(()=>document.querySelector('#corrected').value==='My recorded interpretation.');
- await page.click('#saveOnly');await page.waitForSelector('#report audio');
- await page.reload();await page.goto(origin+'/#history');await page.locator('#history [data-id]').first().click();await page.waitForSelector('#report audio');
- const duration=await page.locator('#report audio').evaluate(a=>new Promise(resolve=>{if(a.readyState)resolve(a.duration);else a.onloadedmetadata=()=>resolve(a.duration)}));assert.ok(duration>.9);
+ await page.click('#saveOnly');await page.waitForSelector('#report a[download]');
+ await page.reload();await page.goto(origin+'/#history');await page.locator('#history [data-id]').first().click();await page.waitForSelector('#report a[download]');
+ const bytes=await page.locator('#report a[download]').evaluate(async a=>(await (await fetch(a.href)).arrayBuffer()).byteLength);assert.ok(bytes>40000);
  await page.click('.close');await page.click('#offlineExercise');await page.fill('#corrected','Storage failure test');
  await page.evaluate(()=>{const original=Storage.prototype.setItem;Storage.prototype.setItem=function(k,v){if(k==='relay-history')throw new DOMException('quota','QuotaExceededError');return original.call(this,k,v)}});
  await page.click('#saveOnly');assert.match(await page.locator('#sessionstatus').innerText(),/could not save/);assert.equal(await page.locator('#corrected').inputValue(),'Storage failure test');
