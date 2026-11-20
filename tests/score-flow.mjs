@@ -24,13 +24,13 @@ try{
    if(failure==='network')return r.abort('failed');
    const extract=r.request().postDataJSON().messages[0].content.includes('Extract the distinct');
    if(extract)extractions++;
-   const value=extract?{units:['Transit update']}:{rows:[{unit:1,coverage:2,accuracy:2,vocabulary:2,evidence:[1],reason:'Faithful'}],weakness:'Practise numbers',strength:'Clear facts',suggestion:'Repeat the figures',reference:'交通简报',bank:Array.from({length:5},(_,i)=>({source:'Source '+i,target:'Target '+i}))};
+   const value=extract?{units:['Transit update']}:{rows:JSON.parse(r.request().postDataJSON().messages[1].content).units.map((_,i)=>({unit:i+1,coverage:2,accuracy:2,vocabulary:2,evidence:[1],quote:"这座城市明年将增加公交车。",reason:"Faithful"})),weakness:'Practise numbers',strength:'Clear facts',suggestion:'Repeat the figures',reference:'交通简报',bank:Array.from({length:5},(_,i)=>({source:'Source '+i,target:'Target '+i}))};
    return r.fulfill({json:{choices:[{message:{content:JSON.stringify(value)}}]}});
   });
   const key=async()=>{await page.locator('dialog[open] input[type=password]').fill('test-fake');await page.locator('dialog[open] form [type=submit]').click()};
   await page.goto(origin+"/#history");await page.locator("#offlineExercise").click();
   assert.ok(await page.evaluate(()=>navigator.mediaDevices.getUserMedia.toString().includes("[native code]")));
-  await page.locator("#testMic").click();
+  await page.locator("#recordSettings summary").first().click();await page.locator("#testMic").click();
   await page.waitForFunction(()=>document.querySelector("#micStatus").textContent.includes("test passed"),null,{timeout:15000});
   const testAudio=await page.locator("#micTestReplay").evaluate(async a=>{
    const c=new AudioContext(),b=await c.decodeAudioData(await (await fetch(a.src)).arrayBuffer());await c.close();
@@ -60,8 +60,8 @@ try{
   await page.click('#evaluate');await key();await page.waitForFunction(()=>document.querySelector('#sessionstatus').textContent.includes('401'));
   await page.reload();await page.goto(origin+'/#history');await page.locator('#history [data-id]').first().click();
   failure='network';await page.click('#retryAssessment');await key();await page.waitForFunction(()=>document.querySelector('#reportStatus').textContent.includes('remains saved'));
-  failure='';await page.click('#retryAssessment');await key();await page.waitForSelector('#report .score');
-  assert.match(await page.locator('#report .score').innerText(),/100\/100/);assert.equal(extractions,1);
+  failure='';await page.click('#retryAssessment');await page.waitForSelector('#report .score');
+  assert.match(await page.locator('#report .score').innerText(),/A · 熟练/);assert.equal(extractions,0);
   await page.reload();await page.locator('#history [data-id]').first().click();await page.waitForSelector('#report audio');
   assert.match(await page.locator('#report').innerText(),/Word bank/);assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('relay-history')).length),1);
   console.log(compatibility?"Native fallback":"Worklet + native capture",signal);

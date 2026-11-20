@@ -1,4 +1,4 @@
-const endpoints=Object.freeze({manuscript:'https://api.deepseek.com/chat/completions',voice:'https://api.deepseek.com/v1/tools/tts'});
+const endpoints=Object.freeze({manuscript:'https://api.deepseek.com/chat/completions',asr:'https://api.deepseek.com/v1/tools/asr',voice:'https://api.deepseek.com/v1/tools/tts'});
 
 let tabKey="";
 if(typeof window!=="undefined")window.addEventListener("pagehide",()=>{tabKey=""});
@@ -31,7 +31,7 @@ export async function withDeepSeek(label,run,controller=new AbortController(),di
   tabKey=key;
   async function request(operation,body){
    if(!key||!Object.hasOwn(endpoints,operation))throw Error('Operation closed');
-   const result=await fetch(endpoints[operation],{method:'POST',credentials:'omit',redirect:'error',referrerPolicy:'no-referrer',cache:'no-store',signal:controller.signal,headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify(body)});
+   const result=await fetch(endpoints[operation],{method:'POST',credentials:'omit',redirect:'error',referrerPolicy:'no-referrer',cache:'no-store',signal:controller.signal,headers:{Authorization:'Bearer '+key,...(operation==='asr'?{}:{'Content-Type':'application/json'})},body:operation==="asr"?body:JSON.stringify(body)});
    if(result.status===401 && tabKey===key)tabKey="";
    if(!result.ok)throw Error('DeepSeek HTTP '+result.status+(result.status===401?' · Check your API key.':result.status===402?' · Check your DeepSeek balance.':''));
    return result;

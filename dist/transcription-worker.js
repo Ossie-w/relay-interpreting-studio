@@ -30,8 +30,8 @@ self.onmessage=async({data:{id,samples,dir,warmup,mode='enhanced'}})=>{
   if(warmup){postMessage({id,ready:true,engine});return}
   report(engine+' · transcribing your '+(dir==='en'?'Mandarin':'English')+' recording…');
   // Never pass the source manuscript or a corrected answer to recognition.
-  const result=await recognize(samples,{language:dir==='en'?'chinese':'english',task:'transcribe',chunk_length_s:30,stride_length_s:5});
-  postMessage({id,text:result.text.trim(),engine});
+  const result=await recognize(samples,{language:dir==='en'?'chinese':'english',task:'transcribe',return_timestamps:true,no_repeat_ngram_size:6,chunk_length_s:30,stride_length_s:5});
+  postMessage({id,text:result.text.trim(),segments:(result.chunks||[]).filter(c=>c.timestamp?.every(Number.isFinite)).map(c=>({text:c.text.trim(),start:c.timestamp[0],end:c.timestamp[1]})),engine});
  }catch(error){postMessage({id,error:(error.message||'Transcription failed.')+(engine.includes('small')?' You can select Lightweight and retry the same recording.':''),engine})}
  finally{listeners.delete(id);if(activeId===id)activeId=null}
 };

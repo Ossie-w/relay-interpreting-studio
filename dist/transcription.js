@@ -1,11 +1,16 @@
+import {withDeepSeek} from './deepseek-access.js';
+import {encodeWave} from './recording.js';
 let worker=null,pending=null,warmupStatus=null,mode='enhanced',engine='';
+let segments=[];
+export const transcriptSegments=()=>segments.slice();
 export const transcriptionEngine=()=>engine;
 export function setTranscriptionMode(value){
  if(pending)throw Error('Wait for the current transcript before changing modes.');
- const next=value==='lightweight'?'lightweight':'enhanced';
+ const next=value==='cloud'?'cloud':value==='lightweight'?'lightweight':'enhanced';
  if(next!==mode){worker?.terminate();worker=null;engine='';mode=next}
 }
 export function prepareTranscription(status=()=>{}){
+ if(mode==='cloud')return;
  warmupStatus=status;
  try{ensureWorker();worker.postMessage({id:"warmup",warmup:true,mode})}
  catch(error){status("Transcription preparation unavailable. Your recording can continue. "+error.message)}
@@ -26,6 +31,7 @@ function ensureWorker(){
    if(!pending||data.id!==pending.id)return;
    if(data.error||typeof data.text==="string"){
     const job=pending;pending=null;clearTimeout(job.timeout);
+    segments=data.segments||[];
     data.error?job.reject(Error(data.error)):job.resolve(data.text);
    }else pending.status(data.status);
   };
@@ -33,6 +39,7 @@ function ensureWorker(){
 }
 export async function transcribeRecording(blob,dir,status){
  if(pending)throw Error("A recording is already being transcribed.");
+ segments=[];
  status("Preparing your recording for automatic transcription…");
  const context=new AudioContext();let samples;
  try{
@@ -41,6 +48,27 @@ export async function transcribeRecording(blob,dir,status){
   const source=offline.createBufferSource();source.buffer=buffer;source.connect(offline.destination);source.start();
   samples=(await offline.startRendering()).getChannelData(0);
  }finally{await context.close()}
+ if(mode==='cloud'){
+  engine='DeepSeek ASR';
+  return withDeepSeek('Transcribe with DeepSeek',async request=>{
+   const pieces=[];
+   for(let start=0;start<samples.length;){
+    let end=Math.min(samples.length,start+22*16000);
+    if(end<samples.length){
+     let minimum=Infinity,boundary=end;
+     for(let i=end-6*16000;i<end;i+=320){let power=0;for(let j=i;j<i+320;j++)power+=samples[j]*samples[j];if(power<minimum){minimum=power;boundary=i+160}}
+     end=boundary;
+    }
+    status('DeepSeek ASR · '+Math.round(start/16000)+' s / '+Math.round(samples.length/16000)+' s');
+    const form=new FormData();form.append('file',encodeWave([samples.subarray(start,end)],16000).blob,'practice.wav');
+    const result=await (await request('asr',form)).json();
+    if(typeof result.text!=='string')throw Error('Incomplete speech recognition response.');
+    if(result.text.trim())segments.push({text:result.text.trim(),start:start/16000,end:end/16000});
+    pieces.push(result.text.trim());start=end;
+   }
+   return pieces.filter(Boolean).join('\n');
+  });
+ }
  navigator.storage?.persist?.().catch(()=>{});
  ensureWorker();
  return new Promise((resolve,reject)=>{
