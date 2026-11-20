@@ -18,3 +18,4 @@
 
 #detail[open]{display:flex;flex-direction:column;overflow:hidden}#detail>.close{align-self:flex-end;flex:none;z-index:1}#detail>#report{overflow:auto;min-height:0;overscroll-behavior:contain}.videoSetup{margin-bottom:1rem}.videoSetup label{display:block;margin:.8rem 0}.videoSetup input,.videoSetup textarea{display:block;width:100%}#insightResult{white-space:pre-line}
 body:has(#work) .card{margin-bottom:1rem}#work label,#work input,#work textarea{display:block;margin:.6rem 0}#work ol{padding-left:2rem}#work li{padding:.5rem;border-bottom:1px solid var(--line)}#work li p{color:var(--muted)}
+#video #wordOptions label{display:inline-block;margin-right:1em}#video #wordOptions input{display:inline;width:auto}#vocabText{white-space:pre-line}

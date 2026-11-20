@@ -88,11 +88,11 @@ function historyView(){ $("history").innerHTML=`<article class="card"><h2>Your a
  $("offlineExercise").onclick=()=>{if(discard()){location.hash="#studio";newSession(demoSpeech($("examplesDir").value))}};
  const draw=()=>$("samples").innerHTML=["faithful","number","omission"].map((v,i)=>{const r=example($("examplesDir").value,v);return row({...r,title:["Faithful paraphrase","Changed number","Omitted idea"][i]})}).join("");$("examplesDir").onchange=draw;draw()}
 function route(){
- const route=["studio","plan","history"].includes(location.hash.slice(1))?location.hash.slice(1):"studio";
- for(const name of ["studio","plan","history"])$(name).hidden=name!==route;
+ const route=["studio","plan","history","video"].includes(location.hash.slice(1))?location.hash.slice(1):"studio";
+ for(const name of ["studio","plan","history","video"])$(name).hidden=name!==route;
  document.querySelectorAll("nav a").forEach(a=>{a.classList.toggle("active",a.hash==="#"+route);if(a.classList.contains("active"))a.setAttribute("aria-current","page");else a.removeAttribute("aria-current")});
- $("title").textContent={studio:"Practice studio",plan:"Training plan",history:"Practice history"}[route];
- if(route==="plan")planView();if(route==="history")historyView();dashboard();
+ $("title").textContent={studio:"Practice studio",video:"YouTube 视频长交传",plan:"Training plan",history:"Practice history"}[route];
+ records=read("history",[]);if(route==="plan")planView();if(route==="history")historyView();dashboard();
 }
 window.addEventListener("hashchange",()=>{if(recorder && recorder.state!=="inactive")finishRecording();stopSpeech();route()});
 function showReport(r){if(r.rubricVersion&&Array.isArray(r.rows)){const report=$("report");report.innerHTML=renderAssessment(r);if(!$("detail").open)$("detail").showModal();return}if(!Array.isArray(r.rows))return showPending(r);$("report").innerHTML=`<small class="kicker">${r.fixture?"PREPARED CLASSROOM EXAMPLE":"SAVED PRACTICE"}</small><h2>${esc(r.title)}</h2><p class="meta">${esc(directionName(r.dir))} · ${esc(r.topic)}${r.difficulty?" · "+esc(r.difficulty):""}${r.date?" · "+esc(new Date(r.date).toLocaleString()):""}</p><div class="block"><div class="score">${r.score}%</div><b>${r.fixture?"Prepared meaning-accuracy example":"AI-estimated meaning accuracy"}</b><p>Accurate = 1 · Partial = ½ · Omitted or contradicted = 0</p></div><h3>Idea breakdown</h3>${r.rows.map((item,i)=>`<div class="verdict"><b>Idea ${i+1} · ${item.points}/1</b><p>${esc(item.source)}</p><p class="strong">${item.evidence?"“"+esc(item.evidence)+"”":"No matching passage"}</p><p>${esc(item.reason)}</p></div>`).join("")}<h3>Next exercise</h3><p>${esc(r.suggestion)}</p><details><summary>Manuscript and transcripts</summary><h3>Source manuscript</h3><p>${esc(r.source)}</p><h3>Original transcription</h3><p>${esc(r.original)||"Manually entered attempt"}</p><h3>Reviewed transcript</h3><p>${esc(r.transcript)}</p></details><p class="note">Target ${clock(r.target)} · Speech ${r.speechSeconds==null?"unmeasured":clock(r.speechSeconds)} · Recording ${r.recordSeconds==null?"—":clock(r.recordSeconds)}</p>`;if(!$("detail").open)$("detail").showModal();}
