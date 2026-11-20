@@ -1,4 +1,4 @@
-import {setupVideo,ask} from './learning.js?v=numbered1';
+import {setupVideo,ask} from './learning.js?v=paragraphs';
 import {withDeepSeek} from './deepseek-access.js';
 import {transcribeRecording} from './transcription.js?v=20261113c';
 import {assess} from './assessment.js';
@@ -48,8 +48,18 @@ el('evaluateVideo').onclick=async()=>{
 el('vocab').onclick=async()=>{
  const current=speech,button=el('vocab');button.disabled=true;
  try{
-  const r=await withDeepSeek('生成词汇与话题拓展',request=>ask(request,'Create two Chinese study sections. First select 5 to 8 important terms and collocations actually in the talk, with bilingual equivalents and short spoken examples. Then give 3 to 5 related bilingual expressions explicitly labeled as topic extension. Return {"guide":"formatted text"}.',{source:current.source},current.model));
-  if(!r.guide?.trim())throw Error('词汇生成未完成，请重试。');if(speech===current)el('vocabText').textContent=r.guide;
+  const r=await withDeepSeek('生成词汇与话题拓展',request=>ask(request,'Return JSON with arrays terms, phrases, patterns, extension. Each item has strings en and zh. For a full talk aim for 10-14 key terms, 8-12 collocations, 5-8 reusable sentence frames, and 10-14 additional topic expressions. Ground the first three categories in the talk. For short input choose fewer relevant items. Avoid duplicates, examples and Markdown.',{source:current.source},current.model));
+  const fragment=document.createDocumentFragment();
+  for(const [key,title] of Object.entries({terms:'原稿重点词汇',phrases:'常用短语与搭配',patterns:'可复用句型',extension:'话题拓展表达'})){
+   const rows=r[key];if(!Array.isArray(rows)||!rows.length)throw Error('词汇分类不完整，请重试。');
+   const heading=document.createElement('h3'),list=document.createElement('ul');heading.textContent=title;
+   for(const item of rows){
+    if(typeof item?.en!=='string'||typeof item.zh!=='string')throw Error('词条内容不完整，请重试。');
+    const li=document.createElement('li');li.textContent=(item.en+'　'+item.zh).replace(/[#*]/g,'');list.append(li);
+   }
+   fragment.append(heading,list);
+  }
+  if(speech===current)el('vocabText').replaceChildren(fragment);
  }catch(e){el('vocabText').textContent=e.message}finally{button.disabled=false}
 };
 el('exportWord').onclick=async()=>{

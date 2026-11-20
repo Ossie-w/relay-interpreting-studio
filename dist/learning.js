@@ -16,34 +16,57 @@ export function videoID(value){
  return id;
 }
 export function cleanTranscript(input){
- return input.replace(/^[ \t]*(?:\((?:\d+:)?\d{1,2}:\d{2}\)|\[(?:\d+:)?\d{1,2}:\d{2}\]|(?:\d+:)?\d{1,2}:\d{2}(?=\s|$))[ \t]*/gm,'').trim();
+ const lines=input.replace(/\r\n?/g,'\n').split('\n');
+ // Plugin exports commonly put the title and URL before a standalone transcript label.
+ const marker=lines.slice(0,8).findIndex(line=>/^\s*(?:transcript|文字记录|字幕原文|转录文稿)\s*[:：]?\s*$/i.test(line));
+ if(marker>=0&&lines.slice(0,marker).every(line=>!line.trim()||/youtube|youtu\.be|TEDx|\||^v=/i.test(line)))lines.splice(0,marker+1);
+ while(lines.length&&/^\s*(?:$|.*[-–—|]\s*YouTube\s*$|https?:\/\/(?:www\.)?(?:youtube\.com|youtu\.be)\/\S*\s*$|v=[\w-]{11}\s*$)/i.test(lines[0]))lines.shift();
+ return lines.join('\n').replace(/^[ \t]*(?:\((?:\d+:)?\d{1,2}:\d{2}\)|\[(?:\d+:)?\d{1,2}:\d{2}\]|(?:\d+:)?\d{1,2}:\d{2}(?=\s|$))[ \t]*/gm,'')
+  .replace(/[\[（(【]\s*(?:applause|music|laughter|clears?(?:\s+(?:his|her|their))?\s+throat|throat clearing|coughs?|掌声|笑声|清嗓子?|咳嗽|音乐)\s*[\]）)】]/gi,'')
+  .replace(/[ \t]{2,}/g,' ').trim();
 }
+
 export function transcriptBatches(source,dir){
- const sentences=new Intl.Segmenter(dir,{granularity:'sentence'}),words=new Intl.Segmenter(dir,{granularity:'word'});
- const batches=[];let batch=[],size=0;
- function add(value){
-  if(!value.trim())return;
-  if(size+value.length>1800&&batch.length){batches.push(batch);batch=[];size=0}
-  batch.push(value);size+=value.length;
+ const cap=dir==='en'?340:150, goal=dir==='en'?190:85;
+ const sentences=new Intl.Segmenter(dir,{granularity:'sentence'});
+ const words=new Intl.Segmenter(dir,{granularity:'word'});
+ const paragraphs=[];
+ for(const block of source.split(/\n\s*\n/)){
+  let current='';
+  function add(fragment){
+   const text=fragment.trim();if(!text)return;
+   const combined=current+(dir==='en'?' ':'')+text;
+   const continuation=/^[a-z]/.test(text)||text.length<goal/3;
+   if(current&&((current.length>=goal&&!continuation)||combined.length>cap)){paragraphs.push(current);current=text}
+   else current=current?combined:text;
+  }
+  for(const {segment} of sentences.segment(block.replace(/\s*\n\s*/g,dir==='en'?' ':''))){
+   let rest=segment.trim();
+   while(rest.length>cap){
+    const window=rest.slice(0,cap);
+    const clause=[...window.matchAll(/[,;:，；：、。！？]\s*|\s+(?=(?:but|because|whereas|which|and then)\b)/gi)].filter(m=>m.index>=goal/2).at(-1);
+    let cut=clause?clause.index+clause[0].length:0;
+    if(!cut){for(const part of words.segment(rest)){if(part.index>cap)break;cut=part.index}cut=cut||cap}
+    add(rest.slice(0,cut));rest=rest.slice(cut).trimStart();
+   }
+   add(rest);
+  }
+  if(current)paragraphs.push(current);
  }
- for(const {segment} of sentences.segment(source)){
-  if(segment.length<320){add(segment);continue}
-  let phrase='';
-  for(const word of words.segment(segment)){phrase+=word.segment;if(phrase.length>=65){add(phrase);phrase=''}}
-  add(phrase);
- }
+ const batches=[];let batch=[],length=0;
+ for(const p of paragraphs){if(batch.length&&length+p.length>1800){batches.push(batch);batch=[];length=0}batch.push(p);length+=p.length}
  if(batch.length)batches.push(batch);
  return batches;
 }
 export async function translateBatch(request,parts,dir,model){
  const input={target:dir==='en'?'Mandarin':'English',parts:parts.map((text,i)=>({id:i+1,text}))};
  for(let pass=0;pass<2;pass++){
-  const instruction='Translate all numbered transcript parts, in order. Use natural spoken sentences. Return {"pairs":[{"end":1,"translation":"..."}]}. Each end is the inclusive id of the last part translated by that row; begin just after the preceding end. Include every part through the final id. Never repeat the source text.'+(pass?' Return exactly one row for each part, with its id as end.':' Keep each complete sentence in its own row; only combine fragments belonging to the same sentence.');
+  const instruction='Translate each numbered practice paragraph as one coherent passage. Return exactly one row per input in order as JSON: {"pairs":[{"end":1,"translation":"..."}]}. The end field must equal the input id. Preserve every idea and figure in that paragraph; never move material between rows.';
   let result;
   try{result=await ask(request,instruction,input,model)}catch(e){if(pass===0&&e instanceof SyntaxError)continue;throw e}
   let previous=0;const pairs=[];
   for(const row of Array.isArray(result?.pairs)?result.pairs:[]){
-   if(!Number.isInteger(row?.end)||row.end<=previous||row.end>parts.length||typeof row.translation!=='string'||!row.translation.trim()){previous=-1;break}
+   if(!Number.isInteger(row?.end)||row.end!==previous+1||row.end>parts.length||typeof row.translation!=='string'||!row.translation.trim()){previous=-1;break}
    pairs.push({source:parts.slice(previous,row.end).join('').trim(),translation:row.translation.trim()});previous=row.end;
   }
   if(previous===parts.length)return pairs;

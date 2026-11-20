@@ -15,7 +15,7 @@ try{
   if(input.units)return r.fulfill({json:{choices:[{message:{content:JSON.stringify({rows:[{unit:1,coverage:1,accuracy:1,vocabulary:1,evidence:[1],quote:'我们六月开会。',reason:'练习反馈'}],weakness:'时间',strength:'行动',suggestion:'复述日期',reference:'我们六月开会。',bank:Array.from({length:5},(_,i)=>({source:'phrase '+i,target:'搭配'}))})}}]}});
 
   if(input.parts)assert.equal(r.request().postDataJSON().model,"deepseek-v4-pro");
-  const value=input.source?{guide:"重要短语与拓展词汇"}:Array.isArray(input)?{feedback:'两次练习均遗漏时间。'}:{pairs:[{end:1,translation:'我们六月开会。'}]};
+  const value=input.source?Object.fromEntries(['terms','phrases','patterns','extension'].map(k=>[k,[{en:'meet',zh:'开会'}]])):Array.isArray(input)?{feedback:'两次练习均遗漏时间。'}:{pairs:[{end:1,translation:'我们六月开会。'}]};
   return r.fulfill({json:{choices:[{message:{content:JSON.stringify(value)}}]}});
  });
  await p.goto(url);await p.click('a[href="#video"]');await p.fill('#captions','(17:09) We meet in June.');await p.selectOption('#videoModel','deepseek-v4-pro');await p.click('#startVideo');await p.fill('dialog[open] input[type=password]','fake');await p.click('dialog[open] [type=submit]');
