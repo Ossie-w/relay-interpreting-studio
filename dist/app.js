@@ -1,4 +1,4 @@
-import {setupVideo,setupInsights} from './learning.js';
+import {setupInsights} from './learning.js';
 import {grade,renderAssessment} from './assessment-report.js';
 import {storeAttemptAudio,loadAttemptAudio} from "./attempt-audio.js";
 import {prepareTranscription,setTranscriptionMode,transcriptSegments,transcriptionEngine} from "./transcription.js?v=20261113c";
@@ -461,7 +461,7 @@ async function evaluate(saveOnly=false){
 $("date").textContent=new Intl.DateTimeFormat("en",{weekday:"short",month:"short",day:"numeric"}).format(new Date());
 window.addEventListener("storage",e=>{if(e.key==="relay-history"){records=read("history",[]);route()}});
 controls();route();
-setupVideo(()=>({dir,difficulty:$("difficulty").value}),speech=>{if(discard()){newSession(speech);return true}return false});
+
 // Opening the site must not start a multi-gigabyte download or lock the UI.
 if(!location.hash||location.hash==="#studio"){
  const saved=savedDaily(dir);

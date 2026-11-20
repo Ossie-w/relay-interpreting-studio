@@ -57,7 +57,22 @@ export async function grade(request,speech,transcript,units,modelName=model){
 export async function assess(speech,transcript,status){
  return withDeepSeek('Score with DeepSeek Pro',async request=>{
   status('Preparing the source meaning units…');const units=await fixedUnits(request,speech);
-  status('Checking the interpretation and its evidence…');const report=await grade(request,speech,transcript,units);
+  status('Checking the interpretation and its evidence…');let report;
+  if(speech.videoId&&units.length>15){
+   const parts=[];
+   for(let i=0;i<units.length;i+=15){
+    status('逐句评级 · '+(i+1)+'–'+Math.min(i+15,units.length)+' / '+units.length);
+    const group=units.slice(i,i+15);
+    parts.push(await grade(request,{...speech,source:group.join(' ')},transcript,group));
+   }
+   const rows=parts.flatMap(p=>p.rows);
+   const points=(field,max)=>Math.round(max*rows.reduce((n,r)=>n+(r.coverage?r[field]:0),0)/(2*rows.length));
+   const accuracy=points('accuracy',40),coverage=points('coverage',25),vocabulary=points('vocabulary',15);
+   const weakest=parts.reduce((a,b)=>a.contentScore<=b.contentScore?a:b);
+   report={...weakest,rows,accuracy,coverage,vocabulary,contentScore:accuracy+coverage+vocabulary,
+    bank:Array.from(new Map(parts.flatMap(p=>p.bank).map(entry=>[entry.source,entry])).values()),
+    reference:parts.map(p=>p.reference).join('\n\n')};
+  }else report=await grade(request,speech,transcript,units);
   let delivery={reason:'Recording unavailable. Only the content can be scored.'};
   try{
    const blob=speech.blob||await loadAttemptAudio(speech.id);
