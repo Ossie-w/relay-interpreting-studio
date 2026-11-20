@@ -19,7 +19,7 @@ export default async function handler(req){
   }
   const track=tracks.filter(t=>t.languageCode?.split('-')[0]===lang).sort((a,b)=>Number(a.kind==='asr')-Number(b.kind==='asr'))[0];
   if(!track)throw Error();
-  const target=new URL(track.baseUrl);if(target.origin!=='https://www.youtube.com'||target.pathname!=='/api/timedtext')throw Error();
+  const target=new URL(track.baseUrl,"https://www.youtube.com");if(target.origin!=='https://www.youtube.com'||target.pathname!=='/api/timedtext')throw Error();
   target.searchParams.set('fmt','json3');
   const data=await(await read(target)).json();
   const text=data.events?.flatMap(e=>e.segs?.map(s=>s.utf8)||[]).join(' ').replace(/\s+/g,' ').trim();

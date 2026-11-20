@@ -24,6 +24,8 @@ export function setupVideo(settings,open){
   if(recorder?.state==='recording'){recorder.stop();return}
   let stream;
   try{
+   videoID(el('videoURL').value.trim());
+   if(!navigator.mediaDevices?.getDisplayMedia)throw Error('请在独立 Chrome 或 Edge 中打开此页以共享标签页声音，或使用源音频文件。');
    capture.disabled=true;
    stream=await navigator.mediaDevices.getDisplayMedia({video:true,audio:true});
    if(!stream.getAudioTracks().length)throw Error('没有收到标签页声音。请选择标签页并勾选共享声音。');
@@ -31,16 +33,17 @@ export function setupVideo(settings,open){
    recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
    recorder.onstop=()=>{
     captured=new Blob(chunks,{type:recorder.mimeType});stream.getTracks().forEach(t=>t.stop());
-    capture.textContent='重新录取标签页声音';button.disabled=false;status.textContent='已录取，可点击生成视频练习。';
+    el('videoURL').disabled=false;el('videoDir').disabled=false;capture.textContent='重新录取标签页声音';button.disabled=false;if(captured.size){el('captions').value='';el('videoAudio').value='';button.click()}else status.textContent='没有录到声音，请重试。';
    };
    stream.getVideoTracks()[0].onended=()=>{if(recorder.state==='recording')recorder.stop()};
-   recorder.start();button.disabled=true;capture.textContent='结束录取';
+   recorder.start();el('videoURL').disabled=true;el('videoDir').disabled=true;button.disabled=true;capture.textContent='结束录取';
   }catch(error){stream?.getTracks().forEach(t=>t.stop());status.textContent=error.message}finally{capture.disabled=false}
  };
+ el('videoURL').addEventListener('input',()=>{captured=null;el('videoAudio').value=''});
  button.onclick=async()=>{
   button.disabled=true;
   try{
-   const videoId=videoID(el('videoURL').value),{dir,difficulty}=settings();
+   const videoId=videoID(el('videoURL').value),{dir}=settings();
    let source=el('captions').value.trim().replace(/^\s*(?:\d+:)?\d{1,2}:\d{2}\s*/gm,'').trim();
    if(!source){
     const file=el('videoAudio').files[0]||captured;if(!file)throw Error('请粘贴 YouTube 的文字记录，或选择源音频。');
@@ -64,7 +67,7 @@ export function setupVideo(settings,open){
    });
    const ideas=pairs.map(p=>p.source);
    const target=Math.max(1,Math.round(dir==='en'?source.split(/\s+/).length/2.55:source.length/4));
-   if(await open({dir,difficulty,topic:'Video practice',mode:'YouTube',videoId,pairs,ideas,source:ideas.join('\n\n'),target,title:ideas[0].slice(0,85)}))status.textContent='视频练习已打开。';
+   if(await open({dir,topic:'Video practice',mode:'YouTube',videoId,pairs,ideas,source:ideas.join('\n\n'),target,title:ideas[0].slice(0,85)}))status.textContent='视频练习已打开。';
   }catch(error){status.textContent=error.message}finally{button.disabled=false}
  };
 }

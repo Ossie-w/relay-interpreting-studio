@@ -10,7 +10,7 @@ let speech,take,lookup,revision=0;
 const flags=new Set();
 function lock(name,on){
  if(on)flags.add(name);else flags.delete(name);
- for(const id of ['videoURL','videoDir','videoLevel','take','recognize','evaluateVideo','confirmed','startVideo'])el(id).disabled=flags.size>0;
+ for(const id of ['videoURL','videoDir','take','recognize','evaluateVideo','confirmed','startVideo'])el(id).disabled=flags.size>0;
 }
 async function captions(){
  const version=++revision;
@@ -29,7 +29,17 @@ async function captions(){
 let timer;
 function changed(){++revision;lookup?.abort();clearTimeout(timer);el('captions').value='';timer=setTimeout(captions,350)}
 el('videoURL').oninput=changed;el('videoDir').onchange=changed;if(el('videoURL').value)changed();
-setupVideo(()=>({dir:el('videoDir').value,difficulty:el('videoLevel').value}),async material=>{
+el('subtitleFile').onchange=async()=>{
+ const file=el('subtitleFile').files[0];if(!file)return;
+ try{
+  const content=(await file.text()).replace(/^\uFEFF/,'');
+  const lines=content.split(/\r?\n/).filter(line=>!/^\s*(?:WEBVTT|NOTE|STYLE|REGION|Kind:|Language:)/.test(line)&&!line.includes('-->')&&!/^\s*\d+\s*$/.test(line));
+  const text=lines.map(line=>line.replace(/<[^>]*>/g,'').trim()).filter(Boolean).join(' ');
+  if(!text)throw Error('字幕文件中未找到文字。');
+  el('captions').value=text;el('videoStatus').textContent='字幕已导入，点击生成对照稿。';
+ }catch(error){el('videoStatus').textContent=error.message}
+};
+setupVideo(()=>({dir:el('videoDir').value}),async material=>{
  if(speech&&(take||el('notes').value)&&!confirm('打开新的演讲并清空当前笔记和录音？'))return false;
  speech={...material,id:crypto.randomUUID()};take=null;el('take').value='';el('notes').value='';el('confirmed').value='';el('feedback').textContent='';el('results').hidden=true;
  const frame=document.createElement('iframe');frame.src='https://www.youtube-nocookie.com/embed/'+speech.videoId;frame.title='演讲视频';frame.allowFullscreen=true;frame.style.cssText='width:100%;aspect-ratio:16/9;border:0';
