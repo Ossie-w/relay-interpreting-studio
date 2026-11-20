@@ -1,4 +1,4 @@
-import {setupVideo,ask} from './learning.js';
+import {setupVideo,ask} from './learning.js?v=numbered1';
 import {withDeepSeek} from './deepseek-access.js';
 import {transcribeRecording} from './transcription.js?v=20261113c';
 import {assess} from './assessment.js';

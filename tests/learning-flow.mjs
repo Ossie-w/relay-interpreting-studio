@@ -14,11 +14,11 @@ try{
   const input=JSON.parse(r.request().postDataJSON().messages[1].content);
   if(input.units)return r.fulfill({json:{choices:[{message:{content:JSON.stringify({rows:[{unit:1,coverage:1,accuracy:1,vocabulary:1,evidence:[1],quote:'我们六月开会。',reason:'练习反馈'}],weakness:'时间',strength:'行动',suggestion:'复述日期',reference:'我们六月开会。',bank:Array.from({length:5},(_,i)=>({source:'phrase '+i,target:'搭配'}))})}}]}});
 
-  if(input.transcript)assert.equal(r.request().postDataJSON().model,"deepseek-v4-pro");
-  const value=input.source?{guide:"重要短语与拓展词汇"}:Array.isArray(input)?{feedback:'两次练习均遗漏时间。'}:{pairs:[{source:'We meet in June.',translation:'我们六月开会。'}]};
+  if(input.parts)assert.equal(r.request().postDataJSON().model,"deepseek-v4-pro");
+  const value=input.source?{guide:"重要短语与拓展词汇"}:Array.isArray(input)?{feedback:'两次练习均遗漏时间。'}:{pairs:[{end:1,translation:'我们六月开会。'}]};
   return r.fulfill({json:{choices:[{message:{content:JSON.stringify(value)}}]}});
  });
- await p.goto(url);await p.click('a[href="#video"]');await p.fill('#captions','We meet in June.');await p.selectOption('#videoModel','deepseek-v4-pro');await p.click('#startVideo');await p.fill('dialog[open] input[type=password]','fake');await p.click('dialog[open] [type=submit]');
+ await p.goto(url);await p.click('a[href="#video"]');await p.fill('#captions','(17:09) We meet in June.');await p.selectOption('#videoModel','deepseek-v4-pro');await p.click('#startVideo');await p.fill('dialog[open] input[type=password]','fake');await p.click('dialog[open] [type=submit]');
  await p.waitForSelector('#pairs li');assert.match(await p.locator('#work').textContent(),/我们六月开会/);
  await p.locator('#take').setInputFiles('dist/commute-zh.wav');await p.locator('#recognize').scrollIntoViewIfNeeded();await p.waitForTimeout(500);await p.click('#recognize');await p.waitForFunction(()=>document.querySelector('#confirmed').value==='我们六月开会。');await p.locator('#evaluateVideo').scrollIntoViewIfNeeded();await p.waitForTimeout(500);await p.click('#evaluateVideo');await p.waitForSelector('#results .score');assert.match(await p.locator('#results').innerText(),/Word bank/);
  await p.click('#vocab');await p.waitForFunction(()=>document.querySelector('#vocabText').textContent.includes('拓展'));

@@ -15,33 +15,68 @@ export function videoID(value){
  if(!/^[\w-]{11}$/.test(id||''))throw Error('请输入包含视频编号的 YouTube 链接。');
  return id;
 }
-const words=s=>s.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]/gu,'');
+export function cleanTranscript(input){
+ return input.replace(/^[ \t]*(?:\((?:\d+:)?\d{1,2}:\d{2}\)|\[(?:\d+:)?\d{1,2}:\d{2}\]|(?:\d+:)?\d{1,2}:\d{2}(?=\s|$))[ \t]*/gm,'').trim();
+}
+export function transcriptBatches(source,dir){
+ const sentences=new Intl.Segmenter(dir,{granularity:'sentence'}),words=new Intl.Segmenter(dir,{granularity:'word'});
+ const batches=[];let batch=[],size=0;
+ function add(value){
+  if(!value.trim())return;
+  if(size+value.length>1800&&batch.length){batches.push(batch);batch=[];size=0}
+  batch.push(value);size+=value.length;
+ }
+ for(const {segment} of sentences.segment(source)){
+  if(segment.length<320){add(segment);continue}
+  let phrase='';
+  for(const word of words.segment(segment)){phrase+=word.segment;if(phrase.length>=65){add(phrase);phrase=''}}
+  add(phrase);
+ }
+ if(batch.length)batches.push(batch);
+ return batches;
+}
+export async function translateBatch(request,parts,dir,model){
+ const input={target:dir==='en'?'Mandarin':'English',parts:parts.map((text,i)=>({id:i+1,text}))};
+ for(let pass=0;pass<2;pass++){
+  const instruction='Translate all numbered transcript parts, in order. Use natural spoken sentences. Return {"pairs":[{"end":1,"translation":"..."}]}. Each end is the inclusive id of the last part translated by that row; begin just after the preceding end. Include every part through the final id. Never repeat the source text.'+(pass?' Return exactly one row for each part, with its id as end.':' Keep each complete sentence in its own row; only combine fragments belonging to the same sentence.');
+  let result;
+  try{result=await ask(request,instruction,input,model)}catch(e){if(pass===0&&e instanceof SyntaxError)continue;throw e}
+  let previous=0;const pairs=[];
+  for(const row of Array.isArray(result?.pairs)?result.pairs:[]){
+   if(!Number.isInteger(row?.end)||row.end<=previous||row.end>parts.length||typeof row.translation!=='string'||!row.translation.trim()){previous=-1;break}
+   pairs.push({source:parts.slice(previous,row.end).join('').trim(),translation:row.translation.trim()});previous=row.end;
+  }
+  if(previous===parts.length)return pairs;
+ }
+ throw Error('译文编号不完整，请重试当前段。');
+}
 export function setupVideo(settings,open){
  const button=el('startVideo'),status=el('videoStatus');
+ let pending;
  button.onclick=async()=>{
   button.disabled=true;
   try{
    const {dir,model}=settings();
-   let source=el('captions').value.trim().replace(/^\s*(?:\d+:)?\d{1,2}:\d{2}\s*/gm,'').trim();
+   const source=cleanTranscript(el('captions').value);
    if(!source)throw Error('请先粘贴插件转录的文稿。');
    if(!source.trim())throw Error('未检测到语音。');
    if(source.length>100000)throw Error('请选取十万字符以内的一段演讲。');
-   const pairs=[];
+   if(!pending||pending.source!==source||pending.dir!==dir||pending.model!==model){
+    pending={source,dir,model,batches:transcriptBatches(source,dir),pairs:[],next:0};
+   }
+   const job=pending;
    await withDeepSeek('整理字幕并翻译',async request=>{
-    let remaining=source;
-    while(remaining){
-     let cut=Math.min(1800,remaining.length);
-     if(cut<remaining.length){const edges=[...remaining.slice(0,cut).matchAll(/[。！？.!?\n]\s*/g)];const last=edges.at(-1);if(last&&last.index>600)cut=last.index+last[0].length}
-     const block=remaining.slice(0,cut);remaining=remaining.slice(cut);
-     status.textContent='正在整理字幕并生成逐句译文…';
-     const result=await ask(request,'Segment the transcript into natural complete sentences. Keep every source word in order, changing only punctuation and whitespace. Translate each into the target language. Return {"pairs":[{"source":"original sentence","translation":"translation"}]}.',{target:dir==='en'?'Mandarin':'English',transcript:block},model);
-     if(!Array.isArray(result.pairs)||!result.pairs.length||!result.pairs.every(p=>typeof p.source==='string'&&typeof p.translation==='string'&&p.translation.trim())||words(result.pairs.map(p=>p.source).join(''))!==words(block))throw Error('字幕文字核对失败。原字幕已保留，可重新生成。');
-     pairs.push(...result.pairs);
+    while(job.next<job.batches.length){
+     status.textContent='正在断句翻译 · 第 '+(job.next+1)+' / '+job.batches.length+' 段';
+     try{job.pairs.push(...await translateBatch(request,job.batches[job.next],dir,model))}
+     catch(e){throw Error('第 '+(job.next+1)+' 段：'+e.message+' 已完成的段落保留在此页。')}
+     job.next++;
     }
    });
+   const pairs=job.pairs;
    const ideas=pairs.map(p=>p.source);
    const target=Math.max(1,Math.round(dir==='en'?source.split(/\s+/).length/2.55:source.length/4));
-   if(await open({dir,topic:'Video practice',mode:'YouTube',model,pairs,ideas,source:ideas.join('\n\n'),target,title:ideas[0].slice(0,85)}))status.textContent='视频练习已打开。';
+   if(await open({dir,topic:'Video practice',mode:'YouTube',model,pairs,ideas,source:ideas.join('\n\n'),target,title:ideas[0].slice(0,85)})){status.textContent='视频练习已打开。';pending=null}
   }catch(error){status.textContent=error.message}finally{button.disabled=false}
  };
 }
