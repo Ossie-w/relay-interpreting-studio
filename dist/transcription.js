@@ -1,3 +1,4 @@
+import {utteranceEnd} from './review-clips.js';
 import {withDeepSeek} from './deepseek-access.js';
 import {encodeWave} from './recording.js';
 let worker=null,pending=null,warmupStatus=null,mode='enhanced',engine='';
@@ -53,12 +54,7 @@ export async function transcribeRecording(blob,dir,status){
   return withDeepSeek('Transcribe with DeepSeek',async request=>{
    const pieces=[];
    for(let start=0;start<samples.length;){
-    let end=Math.min(samples.length,start+22*16000);
-    if(end<samples.length){
-     let minimum=Infinity,boundary=end;
-     for(let i=end-6*16000;i<end;i+=320){let power=0;for(let j=i;j<i+320;j++)power+=samples[j]*samples[j];if(power<minimum){minimum=power;boundary=i+160}}
-     end=boundary;
-    }
+    const end=utteranceEnd(samples,start,16000);
     status('DeepSeek ASR · '+Math.round(start/16000)+' s / '+Math.round(samples.length/16000)+' s');
     const form=new FormData();form.append('file',encodeWave([samples.subarray(start,end)],16000).blob,'practice.wav');
     const result=await (await request('asr',form)).json();

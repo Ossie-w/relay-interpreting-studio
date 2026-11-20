@@ -1,3 +1,4 @@
+import {matchedClip} from './review-clips.js';
 import {grade,renderAssessment} from './assessment-report.js';
 import {storeAttemptAudio,loadAttemptAudio} from "./attempt-audio.js";
 import {prepareTranscription,setTranscriptionMode,transcriptSegments,transcriptionEngine} from "./transcription.js?v=20261113c";
@@ -72,7 +73,7 @@ $("directions").onclick=e=>{
 };
 $("topics").onclick=e=>{if(e.target.dataset.topic){topic=e.target.dataset.topic;controls()}};
 $("duration").oninput=()=>$("target").textContent=clock(Number($("duration").value));
-function row(rec){return `<button class="row" data-id="${esc(rec.id)}"><span class="mini" aria-hidden="true">≋</span><span><strong>${esc(rec.title)}</strong><small>${rec.fixture?"Classroom example":esc(new Date(rec.date).toLocaleDateString())} · ${rec.rubricVersion==="relay-sentence-2"?((rec.score==null?"内容 ":"综合 ")+grade(rec.score??rec.contentScore*1.25)):Number.isFinite(rec.score)?rec.score+"%":Number.isFinite(rec.contentScore)&&Array.isArray(rec.rows)?"Content "+rec.contentScore+"/80":"Saved · awaiting assessment"}</small></span><em>›</em></button>`}
+function row(rec){return `<button class="row" data-id="${esc(rec.id)}"><span class="mini" aria-hidden="true">≋</span><span><strong>${esc(rec.title)}</strong><small>${rec.fixture?"Classroom example":esc(new Date(rec.date).toLocaleDateString())} · ${["relay-sentence-2","relay-sentence-3"].includes(rec.rubricVersion)?((rec.score==null?"内容 ":"综合 ")+grade(rec.score??rec.contentScore*1.25)):Number.isFinite(rec.score)?rec.score+"%":Number.isFinite(rec.contentScore)&&Array.isArray(rec.rows)?"Content "+rec.contentScore+"/80":"Saved · awaiting assessment"}</small></span><em>›</em></button>`}
 function dashboard(){
  const now=new Date(),seconds=records.filter(r=>localDate(new Date(r.date))===today()).reduce((n,r)=>n+(r.listenSeconds||0)+(r.recordSeconds||0),0);
  $("goal").innerHTML=`<div class="goalnum">${Math.floor(seconds/60)} <span>/ ${plan.minutes} min</span></div><div class="progress"><i style="width:${Math.min(100,seconds/(plan.minutes*60)*100)}%"></i></div><p class="muted">${plan.days.includes(now.getDay())?"Scheduled practice today":"Optional practice day"}</p><div class="week">${[1,2,3,4,5,6,0].map(d=>`<span class="${d===now.getDay()?"today":""}">${weekdays[d][0]}<b title="${weekdays[d]}">${plan.days.includes(d)?"•":"–"}</b></span>`).join("")}</div>`;
@@ -418,12 +419,42 @@ async function attachSavedAudio(r){
  if(reportAudioURL)URL.revokeObjectURL(reportAudioURL);reportAudioURL="";
  const box=document.createElement("div");$("report").append(box);
  try{
-  const blob=await loadAttemptAudio(r.id);if(!box.isConnected||!blob)return;
+  const blob=await loadAttemptAudio(r.id);if(!box.isConnected)return;if(!blob){box.textContent="此记录未找到可回听的录音。";return}
   reportAudioURL=URL.createObjectURL(blob);
   const audio=document.createElement("audio");audio.controls=true;audio.src=reportAudioURL;
   const download=document.createElement("a");download.href=reportAudioURL;download.download="interpretation-"+r.id+(blob.type.includes("wav")?".wav":".webm");download.textContent="Download saved recording";
   box.append(audio,download);
-  for(const b of $("report").querySelectorAll("[data-review-time]"))b.onclick=()=>{audio.currentTime=Number(b.dataset.reviewTime);audio.play().catch(()=>{})};
+  const context=new OfflineAudioContext(1,1,24000);
+  const buffer=await context.decodeAudioData(await blob.arrayBuffer());
+  if(!box.isConnected)return;
+  let clip=null,clipURL='';
+  const stop=()=>{if(clip){clip.pause();clip=null}if(clipURL){URL.revokeObjectURL(clipURL);clipURL=''}};
+  $('detail').addEventListener('close',stop,{once:true});
+  audio.onplay=stop;
+  const status=document.createElement('p');status.setAttribute('role','status');box.append(status);
+  const bind=(button,start,end)=>{
+   if(!Number.isFinite(start)||!Number.isFinite(end)||start<0||end<=start||end>buffer.duration+.05)return false;
+   const samples=buffer.getChannelData(0).subarray(Math.round(start*buffer.sampleRate),Math.round(end*buffer.sampleRate));
+   if(!samples.some(x=>Math.abs(x)>.001))return false;
+   button.hidden=false;
+   button.onclick=async()=>{stop();audio.pause();try{
+    const {encodeWave}=await import('./recording.js');
+    if(!box.isConnected||!$('detail').open)return;
+    stop();clipURL=URL.createObjectURL(encodeWave([samples],buffer.sampleRate).blob);
+    clip=new Audio(clipURL);clip.onended=stop;await clip.play();
+   }catch{status.textContent='片段未能播放，请使用完整录音播放器重试。'}};
+   return true;
+  };
+  for(const b of $('report').querySelectorAll('[data-review-time]'))bind(b,Number(b.dataset.reviewTime),Number(b.dataset.reviewEnd));
+  for(const slot of $('report').querySelectorAll('[data-sentence-clip]')){
+   const row=r.rows[Number(slot.dataset.sentenceClip)];
+   if(!row.evidence)continue;
+   const range=matchedClip(row.evidence,r.segments);
+   const button=document.createElement('button');
+   if(range&&bind(button,range.start,range.end)){
+    button.textContent='▶ 回听本句 · '+clock(range.start)+' – '+clock(range.end);slot.append(button);
+   }else slot.textContent='未能可靠定位本句，可回听完整录音。';
+  }
  }catch{box.textContent="Saved recording could not be opened in this browser."}
 }
 function showPending(r){
