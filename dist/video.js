@@ -18,7 +18,7 @@ setupVideo(()=>({dir:el('videoDir').value,model:el('videoModel').value}),async m
  speech={...material,id:crypto.randomUUID()};take=null;el('take').value='';el('notes').value='';el('confirmed').value='';el('feedback').textContent='';el('results').hidden=true;
  discussion=[];el('videoChat').replaceChildren();el('chatStatus').textContent='';
  lastReport=null;el('vocabText').textContent='';el('wordStatus').textContent='';
- el('pairs').replaceChildren(...speech.pairs.map(pair=>{const li=document.createElement('li'),p=document.createElement('p');li.textContent=pair.source;p.textContent=pair.translation;li.append(p);return li}));
+ el('pairs').replaceChildren(...speech.pairs.map(pair=>{const li=document.createElement('li'),p=document.createElement('p');const source=document.createElement('div');source.className='pairSource';source.textContent=pair.source;p.textContent=pair.translation;li.append(source,p);return li}));
  el('work').hidden=false;el('work').scrollIntoView({behavior:'instant'});return true;
 });
 el('take').onchange=()=>{take=el('take').files[0];el('confirmed').value='';speech.original='';speech.id=crypto.randomUUID();el('results').hidden=true;el('feedback').textContent=''};
