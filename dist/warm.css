@@ -140,3 +140,15 @@ select option{background:var(--paper);color:var(--ink)}
 }
 @media(prefers-reduced-motion:reduce){main>section,.hero{animation:none}button,select,.top nav a{transition:none;transform:none!important}}
 @media(max-width:420px){.videoSetup>label:nth-child(-n+2){display:flex;width:100%;margin:0 0 16px}}
+/* Requested blue / indigo / white palette with small yellow accents. */
+:root{--canvas:#f3f7ff;--paper:#ffffff;--white:#ffffff;--ink:#202944;--muted:#586580;--accent:#283593;--accent-hover:#1d2874;--tint:#edf5ff;--line:#d7e1f0;--soft:#f0f5fc;--contrast:var(--accent);--contrast-tint:#e3ecff;--focus:var(--accent);--sun:#ffe45c;--sun-hover:#f5d53c;--sky:var(--tint);--mint:var(--soft);--blue:var(--accent);--green:var(--accent);--rose:var(--soft);--select-chevron:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23586580' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")}
+.hero{background:var(--tint);border-color:var(--line)}
+.herocopy h2,.heading h1{color:var(--accent)}
+.hero .demo{background:var(--sun);border-color:var(--sun);color:var(--ink)}
+.hero .demo:hover{background:var(--sun-hover);border-color:var(--sun-hover);color:var(--ink)}
+.brandicon{color:var(--sun)}
+.week .today b{background:var(--sun);color:var(--ink)}
+.progress{background:var(--soft)}.progress i{background:var(--accent)}
+select,#difficulty{background-image:var(--select-chevron)}
+::selection{background:var(--sun);color:var(--ink)}
+/* Review: white surfaces are explicitly requested; existing off-grid spacing is retained to keep this palette-only change stable. */
