@@ -116,3 +116,27 @@ aside>.card:first-child,aside>.card:nth-child(2){background:var(--paper);border-
 .hero .demo{background:var(--accent);border-color:var(--accent);color:var(--paper)}
 .hero .demo:hover{background:var(--accent-hover)}
 .waves{opacity:.07}.symbol{background:var(--soft)}
+/* Soft controls and a restrained coral / teal interaction system. */
+@font-face{font-family:Relay Rounded;src:url('./fonts/nunito.ttf') format('truetype');font-weight:200 1000;font-display:swap}
+:root{--font:'Relay Rounded','PingFang SC','Microsoft YaHei','Noto Sans CJK SC',sans-serif;--contrast:#22675f;--contrast-tint:#eaf3ef;--focus:var(--contrast)}
+button,select,#difficulty,#difficulty option{font-weight:700}
+label,legend,.top nav a{font-weight:700}
+button,.action,.chips button{border-radius:14px}
+select,#difficulty{appearance:none;-webkit-appearance:none;min-height:48px;max-width:100%;padding:12px 44px 12px 18px;border:1px solid var(--transparent);border-radius:16px;background-color:var(--soft);color:var(--ink);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2370635e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 16px center}
+select:hover:not(:disabled),#difficulty:hover{background-color:var(--contrast-tint)}
+select:focus-visible,#difficulty:focus-visible{background-color:var(--contrast-tint);outline:2px solid var(--contrast);outline-offset:3px}
+select option{background:var(--paper);color:var(--ink)}
+.videoSetup>label:nth-child(-n+2){display:inline-flex;flex-direction:column;gap:8px;width:calc(50% - 12px);margin:0 16px 24px 0;vertical-align:top}
+.videoSetup>label:nth-child(2){margin-right:0}
+.videoSetup>label:nth-child(-n+2) select{width:100%;margin:0}
+.seg button[aria-pressed=true]{color:var(--contrast);background:var(--contrast-tint);border-color:var(--transparent)}
+.seg{border-radius:18px;padding:5px}.seg button{border-radius:13px}
+.chips button[aria-pressed=true]{background:var(--contrast-tint);border-color:var(--contrast);color:var(--contrast)}
+@media(prefers-reduced-motion:no-preference){
+ button,select,#difficulty,.top nav a{transition:background-color .18s ease,color .18s ease,border-color .18s ease,transform .18s ease}
+ main>section:not([hidden]){animation:relay-route .24s ease-out both}
+ @keyframes relay-route{from{opacity:.4;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+ .seg button:hover:not(:disabled){transform:none}.chips button:active:not(:disabled),.seg button:active:not(:disabled){transform:scale(.98)}
+}
+@media(prefers-reduced-motion:reduce){main>section,.hero{animation:none}button,select,.top nav a{transition:none;transform:none!important}}
+@media(max-width:420px){.videoSetup>label:nth-child(-n+2){display:flex;width:100%;margin:0 0 16px}}
