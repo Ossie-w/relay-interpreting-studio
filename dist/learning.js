@@ -61,7 +61,7 @@ export function transcriptBatches(source,dir){
 export async function translateBatch(request,parts,dir,model){
  const input={target:dir==='en'?'Mandarin':'English',parts:parts.map((text,i)=>({id:i+1,text}))};
  for(let pass=0;pass<2;pass++){
-  const instruction='Translate each numbered practice paragraph as one coherent passage. Return exactly one row per input in order as JSON: {"pairs":[{"end":1,"translation":"..."}]}. The end field must equal the input id. Preserve every idea and figure in that paragraph; never move material between rows.';
+  const instruction='Translate each numbered practice paragraph as natural, idiomatic spoken language suitable for a university interpreting demonstration. Read all paragraphs for context, resolve pronouns and consistent terminology, then translate each in its own row. Use fluent target-language syntax and natural transitions; avoid literal calques and translationese. Preserve tone, hedging, humour, numbers and substantive detail; do not summarize or embellish. Return exactly one row per input in order as JSON: {"pairs":[{"end":1,"translation":"..."}]}. The end field must equal the input id. Preserve every idea and figure in that paragraph; never move material between rows.';
   let result;
   try{result=await ask(request,instruction,input,model)}catch(e){if(pass===0&&e instanceof SyntaxError)continue;throw e}
   let previous=0;const pairs=[];

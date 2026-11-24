@@ -1,4 +1,4 @@
-import {setupVideo,ask} from './learning.js?v=paragraphs';
+import {setupVideo,ask,videoID} from './learning.js?v=discussion';
 import {withDeepSeek} from './deepseek-access.js';
 import {transcribeRecording} from './transcription.js?v=20261113c';
 import {assess} from './assessment.js';
@@ -7,6 +7,7 @@ import {storeAttemptAudio} from './attempt-audio.js';
 
 const el=id=>document.getElementById(id);
 let speech,take,lastReport;
+let discussion=[];
 const flags=new Set();
 function lock(name,on){
  if(on)flags.add(name);else flags.delete(name);
@@ -15,6 +16,7 @@ function lock(name,on){
 setupVideo(()=>({dir:el('videoDir').value,model:el('videoModel').value}),async material=>{
  if(speech&&(take||el('notes').value)&&!confirm('打开新的演讲并清空当前笔记和录音？'))return false;
  speech={...material,id:crypto.randomUUID()};take=null;el('take').value='';el('notes').value='';el('confirmed').value='';el('feedback').textContent='';el('results').hidden=true;
+ discussion=[];el('videoChat').replaceChildren();el('chatStatus').textContent='';
  lastReport=null;el('vocabText').textContent='';el('wordStatus').textContent='';
  el('pairs').replaceChildren(...speech.pairs.map(pair=>{const li=document.createElement('li'),p=document.createElement('p');li.textContent=pair.source;p.textContent=pair.translation;li.append(p);return li}));
  el('work').hidden=false;el('work').scrollIntoView({behavior:'instant'});return true;
@@ -84,4 +86,29 @@ el('exportWord').onclick=async()=>{
   const blob=await Packer.toBlob(new Document({sections:[{children:body}]}));
   const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='Relay-视频长交传.docx';a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);out.textContent='Word 文档已生成。';
  }catch(e){out.textContent=e.message}
+};
+
+el('loadYoutube').onclick=()=>{
+ try{
+  const id=videoID(el('youtubeLink').value.trim());
+  el('youtubePlayer').src='https://www.youtube-nocookie.com/embed/'+id;
+  el('youtubePlayer').hidden=false;
+  el('youtubeStatus').textContent='播放器已载入。若视频限制嵌入，请在 YouTube 打开观看。';
+ }catch(e){el('youtubeStatus').textContent=e.message}
+};
+el('askVideo').onclick=async()=>{
+ const question=el('videoQuestion').value.trim(),current=speech;
+ if(!current||!question){el('chatStatus').textContent='请先生成对照文稿并输入问题。';return}
+ const button=el('askVideo');button.disabled=true;el('chatStatus').textContent='正在结合文稿回答…';
+ try{
+  const result=await withDeepSeek('文稿问答',request=>ask(request,
+   'You are an interpreting tutor. Answer the question in Chinese unless requested otherwise, using source and reference paragraphs and conversation. Follow requested translation style while preserving all meaning. Quote relevant paragraph numbers. Identify possible transcription errors as hypotheses requiring audio verification. You have no access to the video or sound. Never claim to have heard it. Return JSON {"answer":"plain text response"}.',
+   {source:current.source,paragraphs:current.pairs,conversation:discussion.slice(-8),question},el('videoModel').value));
+  if(typeof result.answer!=='string'||!result.answer.trim())throw Error('回答为空，请重试。');
+  if(current!==speech)return;
+  discussion.push({question,answer:result.answer});
+  const article=document.createElement('article'),heading=document.createElement('h3'),answer=document.createElement('p');
+  heading.textContent=question;answer.textContent=result.answer;answer.style.whiteSpace='pre-wrap';article.append(heading,answer);el('videoChat').append(article);
+  el('videoQuestion').value='';el('chatStatus').textContent='回答完成。';
+ }catch(e){el('chatStatus').textContent=e.message}finally{button.disabled=false}
 };

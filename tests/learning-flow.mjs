@@ -12,6 +12,7 @@ try{
  await p.route('https://api.deepseek.com/**',r=>{
   if(r.request().url().endsWith('/asr'))return r.fulfill({json:{text:'我们六月开会。'}});
   const input=JSON.parse(r.request().postDataJSON().messages[1].content);
+  if(input.question)return r.fulfill({json:{choices:[{message:{content:JSON.stringify({answer:'第 1 段可以译为：我们将于六月开会。'})}}]}});
   if(input.units)return r.fulfill({json:{choices:[{message:{content:JSON.stringify({rows:[{unit:1,coverage:1,accuracy:1,vocabulary:1,evidence:[1],quote:'我们六月开会。',reason:'练习反馈'}],weakness:'时间',strength:'行动',suggestion:'复述日期',reference:'我们六月开会。',bank:Array.from({length:5},(_,i)=>({source:'phrase '+i,target:'搭配'}))})}}]}});
 
   if(input.parts)assert.equal(r.request().postDataJSON().model,"deepseek-v4-pro");
@@ -19,7 +20,10 @@ try{
   return r.fulfill({json:{choices:[{message:{content:JSON.stringify(value)}}]}});
  });
  await p.goto(url);await p.click('a[href="#video"]');await p.fill('#captions','(17:09) We meet in June.');await p.selectOption('#videoModel','deepseek-v4-pro');await p.click('#startVideo');await p.fill('dialog[open] input[type=password]','fake');await p.click('dialog[open] [type=submit]');
- await p.waitForSelector('#pairs li');assert.match(await p.locator('#work').textContent(),/我们六月开会/);
+ await p.waitForSelector('#pairs li');
+ await p.fill('#youtubeLink','https://youtu.be/abcdefghijk');await p.click('#loadYoutube');assert.match(await p.getAttribute('#youtubePlayer','src'),/embed\/abcdefghijk/);
+ await p.fill('#videoQuestion','如何翻译更自然？');await p.click('#askVideo');await p.waitForFunction(()=>document.querySelector('#videoChat').textContent.includes('我们将于六月开会'));
+assert.match(await p.locator('#work').textContent(),/我们六月开会/);
  await p.locator('#take').setInputFiles('dist/commute-zh.wav');await p.locator('#recognize').scrollIntoViewIfNeeded();await p.waitForTimeout(500);await p.click('#recognize');await p.waitForFunction(()=>document.querySelector('#confirmed').value==='我们六月开会。');await p.locator('#evaluateVideo').scrollIntoViewIfNeeded();await p.waitForTimeout(500);await p.click('#evaluateVideo');await p.waitForSelector('#results .score');assert.match(await p.locator('#results').innerText(),/Word bank/);
  await p.click('#vocab');await p.waitForFunction(()=>document.querySelector('#vocabText').textContent.includes('拓展'));
  await p.check('#wordOptions [value=learner]');const downloading=p.waitForEvent('download');await p.click('#exportWord');const download=await downloading;
