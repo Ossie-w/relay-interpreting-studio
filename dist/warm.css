@@ -106,3 +106,13 @@ aside>.card:nth-child(2){background:var(--sky);border-color:var(--sky)}
 #history>.card:first-child{border-top:4px solid var(--blue)}
 @media(prefers-reduced-motion:no-preference){button:hover:not(:disabled){transform:translateY(-2px)}button:active:not(:disabled){transform:translateY(1px)}.hero{animation:relay-arrive .35s ease-out}@keyframes relay-arrive{from{transform:translateY(8px)}to{transform:translateY(0)}}}
 @media(max-width:670px){.herocopy{padding:24px}.herocopy h2{font-size:26px}.top nav a{padding:8px 6px}#work #pairs li{gap:4px}#work #pairs li p{padding:16px}}
+/* Unified coral palette across all practice routes. */
+:root{--canvas:#fcf9f5;--paper:#fffdfa;--ink:#302b29;--muted:#70635e;--accent:#b53e29;--accent-hover:#91301f;--tint:#fbe5dc;--line:#e3d8d1;--soft:#f5efea;--focus:var(--accent);--sun:var(--tint);--sky:var(--soft);--mint:var(--soft);--blue:var(--accent);--green:var(--accent);--rose:var(--soft)}
+aside>.card:first-child,aside>.card:nth-child(2){background:var(--paper);border-color:var(--line)}
+.chips button:nth-child(n){background:var(--paper);color:var(--muted);border-color:var(--line)}
+.chips button[aria-pressed=true]{background:var(--tint);color:var(--accent);border-color:var(--accent)}
+.chips button:hover:not(:disabled){background:var(--soft);color:var(--accent)}
+#video>article:first-child,.videoSetup,#plan>.card:first-child,#history>.card:first-child{border-top:1px solid var(--line)}
+.hero .demo{background:var(--accent);border-color:var(--accent);color:var(--paper)}
+.hero .demo:hover{background:var(--accent-hover)}
+.waves{opacity:.07}.symbol{background:var(--soft)}
