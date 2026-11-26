@@ -1,0 +1,5 @@
+import assert from 'node:assert/strict';import {readFile} from 'node:fs/promises';
+const {parseSubtitles,subtitleText,translateCues}=await import('data:text/javascript;base64,'+Buffer.from(await readFile('dist/subtitles.js','utf8')).toString('base64'));
+const cues=parseSubtitles('1\r\n00:00:01,000 --> 00:00:03,000\r\nWe meet\r\nin June.\r\n\r\n2\r\n00:00:03,500 --> 00:00:05,000\r\nBring your notes.');assert.equal(cues.length,2);assert.equal(cues[0].start,1);assert.equal(subtitleText(cues),'We meet in June.\nBring your notes.');assert.equal(parseSubtitles('WEBVTT\n\n00:01.000 --> 00:03.000 align:start\nHello.')[0].end,3);
+const pairs=await translateCues(async()=>({pairs:[{end:2,translation:'六月开会，请带笔记。'}]}),null,cues,'en','model');assert.equal(pairs[0].source,'We meet in June. Bring your notes.');assert.equal(pairs[0].end,5);
+await assert.rejects(()=>translateCues(async()=>({pairs:[{end:1,translation:'部分'}]}),null,cues,'en','model'));console.log('PASS SRT/VTT, TXT, timestamp grouping, omission rejection');

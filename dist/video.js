@@ -1,4 +1,5 @@
-import {setupVideo,ask,videoID} from './learning.js?v=discussion';
+import {parseSubtitles,subtitleText} from './subtitles.js';
+import {setupVideo,ask,videoID} from './learning.js?v=subtitles-20261127';
 import {withDeepSeek} from './deepseek-access.js';
 import {transcribeRecording} from './transcription.js?v=20261113c';
 import {assess} from './assessment.js';
@@ -18,7 +19,7 @@ setupVideo(()=>({dir:el('videoDir').value,model:el('videoModel').value}),async m
  speech={...material,id:crypto.randomUUID()};take=null;el('take').value='';el('notes').value='';el('confirmed').value='';el('feedback').textContent='';el('results').hidden=true;
  discussion=[];el('videoChat').replaceChildren();el('chatStatus').textContent='';
  lastReport=null;el('vocabText').textContent='';el('wordStatus').textContent='';
- el('pairs').replaceChildren(...speech.pairs.map(pair=>{const li=document.createElement('li'),p=document.createElement('p');const source=document.createElement('div');source.className='pairSource';source.textContent=pair.source;p.textContent=pair.translation;li.append(source,p);return li}));
+ el('pairs').replaceChildren(...speech.pairs.map(pair=>{const li=document.createElement('li'),p=document.createElement('p');const source=document.createElement('div');source.className='pairSource';source.textContent=pair.source;if(Number.isFinite(pair.start)){const time=document.createElement('small');time.textContent='字幕时间 '+new Date(pair.start*1000).toISOString().slice(11,19)+' – '+new Date(pair.end*1000).toISOString().slice(11,19);source.append(document.createElement('br'),time)}p.textContent=pair.translation;li.append(source,p);return li}));
  el('work').hidden=false;el('work').scrollIntoView({behavior:'instant'});return true;
 });
 el('take').onchange=()=>{take=el('take').files[0];el('confirmed').value='';speech.original='';speech.id=crypto.randomUUID();el('results').hidden=true;el('feedback').textContent=''};
@@ -112,3 +113,7 @@ el('askVideo').onclick=async()=>{
   el('videoQuestion').value='';el('chatStatus').textContent='回答完成。';
  }catch(e){el('chatStatus').textContent=e.message}finally{button.disabled=false}
 };
+
+el('captionSource').onchange=()=>{el('subtitleImport').hidden=el('captionSource').value!=='file'};
+el('subtitleFile').onchange=async()=>{const file=el('subtitleFile').files[0];if(!file)return;try{if(file.size>2*1024*1024)throw Error('请选择 2MB 以内的字幕或文稿。');const raw=await file.text();const cues=parseSubtitles(raw);if(!cues.length&&!/\.txt$/i.test(file.name))throw Error('未找到有效字幕时间码。');el('captions').value=raw;el('subtitleStatus').textContent=cues.length?'已导入 '+cues.length+' 条字幕；时间戳将用于 AI 分段。':'已导入纯文稿。';}catch(e){el('subtitleStatus').textContent=e.message}finally{el('subtitleFile').value=''}};
+el('exportTxt').onclick=()=>{try{const raw=el('captions').value,cues=parseSubtitles(raw),text=cues.length?subtitleText(cues):raw.trim();if(!text)throw Error('请先导入或粘贴文稿。');const url=URL.createObjectURL(new Blob(['\uFEFF'+text],{type:'text/plain;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download='Relay-原文稿.txt';a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);el('subtitleStatus').textContent='TXT 已导出；原字幕及时间戳仍保留在输入框中。';}catch(e){el('subtitleStatus').textContent=e.message}};

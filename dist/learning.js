@@ -1,3 +1,4 @@
+import {parseSubtitles,subtitleText,cueBatches,translateCues} from './subtitles.js';
 import {withDeepSeek} from './deepseek-access.js';
 import {transcribeRecording} from './transcription.js?v=20261113c';
 
@@ -80,18 +81,19 @@ export function setupVideo(settings,open){
   button.disabled=true;
   try{
    const {dir,model}=settings();
-   const source=cleanTranscript(el('captions').value);
-   if(!source)throw Error('请先粘贴插件转录的文稿。');
+   const raw=el('captions').value;const cues=parseSubtitles(raw);
+   const source=cues.length?subtitleText(cues):cleanTranscript(raw);
+   if(!source)throw Error('请先粘贴文稿或导入字幕。');
    if(!source.trim())throw Error('未检测到语音。');
    if(source.length>100000)throw Error('请选取十万字符以内的一段演讲。');
-   if(!pending||pending.source!==source||pending.dir!==dir||pending.model!==model){
-    pending={source,dir,model,batches:transcriptBatches(source,dir),pairs:[],next:0};
+   if(!pending||pending.raw!==raw||pending.dir!==dir||pending.model!==model){
+    pending={raw,source,dir,model,timed:!!cues.length,batches:cues.length?cueBatches(cues):transcriptBatches(source,dir),pairs:[],next:0};
    }
    const job=pending;
    await withDeepSeek('整理字幕并翻译',async request=>{
     while(job.next<job.batches.length){
      status.textContent='正在断句翻译 · 第 '+(job.next+1)+' / '+job.batches.length+' 段';
-     try{job.pairs.push(...await translateBatch(request,job.batches[job.next],dir,model))}
+     try{job.pairs.push(...await (job.timed?translateCues(ask,request,job.batches[job.next],dir,model):translateBatch(request,job.batches[job.next],dir,model)))}
      catch(e){throw Error('第 '+(job.next+1)+' 段：'+e.message+' 已完成的段落保留在此页。')}
      job.next++;
     }
