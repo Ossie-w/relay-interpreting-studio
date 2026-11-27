@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {recoverScore,scoreBatches} from '../dist/assessment-recovery.js';
+const status=()=>{},wait=async()=>{};
+let n=0;const first=await recoverScore('recover',async()=>{if(!n++)throw Error('DeepSeek HTTP 503');return {score:42}},status,wait);assert.equal(n,2);assert.equal(first.score,42);
+first.score=0;assert.equal((await recoverScore('recover',()=>{throw Error('must not repeat')},status,wait)).score,42);
+n=0;await assert.rejects(recoverScore('invalid-key',async()=>{n++;throw Error('DeepSeek HTTP 401')},status,wait));assert.equal(n,1);
+n=0;await assert.rejects(recoverScore('cancel',async()=>{n++;throw new DOMException('cancel','AbortError')},status,wait));assert.equal(n,1);
+n=0;await assert.rejects(recoverScore('bounded',async()=>{n++;throw Error('Incomplete scoring report')},status,wait));assert.equal(n,3);
+await recoverScore('bounded',async()=>({score:1}),status,wait);
+assert.equal((await recoverScore('edited-transcript',async()=>({score:2}),status,wait)).score,2);
+assert.deepEqual(scoreBatches(Array(15).fill('x')).map(x=>x.length),[6,6,3]);assert.deepEqual(scoreBatches(['a'.repeat(3000),'b'.repeat(3000)]).map(x=>x.length),[1,1]);
+console.log('Recovery: transient retry, checkpoint isolation, bounded failure, no auth/cancel retry passed');

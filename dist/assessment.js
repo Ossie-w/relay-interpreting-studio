@@ -1,10 +1,11 @@
+import {recoverScore,scoreBatches} from './assessment-recovery.js';
 import {completeAudit} from './assessment-audit.js';
 import {withDeepSeek} from './deepseek-access.js';
 import {loadAttemptAudio} from './attempt-audio.js';
 import {measureDelivery} from './delivery.js';
 
 export const rubricVersion='relay-level-4';
-export const assessmentRevision='indexed-audit-20261127';
+export const assessmentRevision='resumable-audit-20261127';
 const text=x=>typeof x==='string'&&x.trim().length>0;
 const model='deepseek-v4-pro';
 
@@ -60,12 +61,16 @@ export async function assess(speech,transcript,status){
  return withDeepSeek('Score with DeepSeek Pro',async request=>{
   status('Preparing the source meaning units…');const units=await fixedUnits(request,speech);
   status('Checking the interpretation and its evidence…');let report;
-  if((speech.videoId||speech.mode==="YouTube")&&units.length>15){
+  const runGroup=async group=>{
+   const key=JSON.stringify([assessmentRevision,model,speech.id,speech.dir,speech.difficulty,group,speech.pairs,transcript]);
+   return recoverScore(key,()=>grade(request,{...speech,source:group.join(' ')},transcript,group),status);
+  };
+  const batches=scoreBatches(units);
+  if(batches.length>1){
    const parts=[];
-   for(let i=0;i<units.length;i+=15){
-    status('逐句评级 · '+(i+1)+'–'+Math.min(i+15,units.length)+' / '+units.length);
-    const group=units.slice(i,i+15);
-    parts.push(await grade(request,{...speech,source:group.join(' ')},transcript,group));
+   for(let i=0;i<batches.length;i++){
+    status('分段评级 · '+(i+1)+' / '+batches.length);
+    parts.push(await runGroup(batches[i]));
    }
    const rows=parts.flatMap(p=>p.rows);
    const points=(field,max)=>Math.round(max*rows.reduce((n,r)=>n+(r.coverage?r[field]:0),0)/(2*rows.length));
@@ -74,7 +79,7 @@ export async function assess(speech,transcript,status){
    report={...weakest,rows,accuracy,coverage,vocabulary,contentScore:accuracy+coverage+vocabulary,
     bank:Array.from(new Map(parts.flatMap(p=>p.bank).map(entry=>[entry.source,entry])).values()),
     reference:parts.map(p=>p.reference).join('\n\n')};
-  }else report=await grade(request,speech,transcript,units);
+  }else report=await runGroup(units);
   let delivery={reason:'Recording unavailable. Only the content can be scored.'};
   try{
    const blob=speech.blob||await loadAttemptAudio(speech.id);
