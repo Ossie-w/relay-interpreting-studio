@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {converse} from '../dist/video-conversation.js';
+const current={dir:'en',pairs:Array.from({length:14},(_,i)=>({source:'Source '+i,translation:'旧译文 '+i,start:i,end:i+1}))};
+let calls=0;
+const ask=async (r,s,input)=>{if(!calls++)return {action:'revise',answer:'已改写',paragraphIds:[],instruction:'更自然'};return {translations:input.paragraphs.map(p=>({id:p.id,translation:'新版 '+p.id}))}};
+const out=await converse(ask,null,current,[],'翻译有点生硬','test');assert.equal(out.changed,14);assert.equal(out.pairs[13].translation,'新版 14');assert.equal(out.pairs[13].start,13);assert.equal(current.pairs[0].translation,'旧译文 0');assert.equal(calls,4);
+let n=0;const selected=await converse(async(r,s,input)=>!n++?{action:'revise',answer:'改第三段',paragraphIds:[3],instruction:'口语'}:{translations:[{id:3,translation:'第三段新版'}]},null,current,[],'第三段口语化','test');assert.equal(selected.pairs[0].translation,'旧译文 0');assert.equal(selected.pairs[2].translation,'第三段新版');
+n=0;await assert.rejects(converse(async()=>!n++?{action:'revise',answer:'好的',paragraphIds:[],instruction:'改写'}:{translations:[]},null,current,[],'改写','test'),/保留/);assert.equal(current.pairs[0].translation,'旧译文 0');
+const answer=await converse(async()=>({action:'answer',answer:'这是隐喻'}),null,current,[],'这是什么意思','test');assert.equal(answer.pairs,undefined);
+console.log('Conversation: full revision, targeted revision, atomic failure and Q&A passed');

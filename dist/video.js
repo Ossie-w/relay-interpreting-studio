@@ -1,3 +1,4 @@
+import {converse} from './video-conversation.js';
 import {parseSubtitles,subtitleText} from './subtitles.js';
 import {setupVideo,ask,videoID} from './learning.js?v=subtitles-20261127';
 import {withDeepSeek} from './deepseek-access.js';
@@ -100,18 +101,20 @@ el('loadYoutube').onclick=()=>{
 el('askVideo').onclick=async()=>{
  const question=el('videoQuestion').value.trim(),current=speech;
  if(!current||!question){el('chatStatus').textContent='请先生成对照文稿并输入问题。';return}
- const button=el('askVideo');button.disabled=true;el('chatStatus').textContent='正在结合文稿回答…';
+ const button=el('askVideo');button.disabled=true;lock('chat',true);el('chatStatus').textContent='正在结合文稿回答…';
  try{
-  const result=await withDeepSeek('文稿问答',request=>ask(request,
-   'You are an interpreting tutor. Answer the question in Chinese unless requested otherwise, using source and reference paragraphs and conversation. Follow requested translation style while preserving all meaning. Quote relevant paragraph numbers. Identify possible transcription errors as hypotheses requiring audio verification. You have no access to the video or sound. Never claim to have heard it. Return JSON {"answer":"plain text response"}.',
-   {source:current.source,paragraphs:current.pairs,conversation:discussion.slice(-8),question},el('videoModel').value));
-  if(typeof result.answer!=='string'||!result.answer.trim())throw Error('回答为空，请重试。');
+  const result=await withDeepSeek('文稿对话与改写',request=>converse(ask,request,current,discussion,question,el('videoModel').value,s=>el('chatStatus').textContent=s));
   if(current!==speech)return;
+  if(result.pairs){
+   speech.pairs=result.pairs;
+   speech.reference=result.pairs.map(p=>p.translation).join('\n\n');
+   [...el('pairs').children].forEach((li,i)=>{li.querySelector('p').textContent=result.pairs[i].translation});
+  }
   discussion.push({question,answer:result.answer});
   const article=document.createElement('article'),heading=document.createElement('h3'),answer=document.createElement('p');
   heading.textContent=question;answer.textContent=result.answer;answer.style.whiteSpace='pre-wrap';article.append(heading,answer);el('videoChat').append(article);
-  el('videoQuestion').value='';el('chatStatus').textContent='回答完成。';
- }catch(e){el('chatStatus').textContent=e.message}finally{button.disabled=false}
+  el('videoQuestion').value='';el('chatStatus').textContent=result.pairs?'已更新 '+result.changed+' 段译文；双语对照和 Word 导出已使用新版。':'回答完成。';
+ }catch(e){el('chatStatus').textContent=e.message}finally{button.disabled=false;lock('chat',false)}
 };
 
 el('captionSource').onchange=()=>{el('subtitleImport').hidden=el('captionSource').value!=='file'};
