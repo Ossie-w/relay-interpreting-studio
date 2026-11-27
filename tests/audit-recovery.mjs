@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import {completeAudit} from '../dist/assessment-audit.js';
+const pairs=[{id:3,source:'specific source',learner:'specific target'},{id:7,source:'other source',learner:'other target'}];
+const ok=id=>({id,missing:'',expression:''});
+assert.deepEqual((await completeAudit(pairs,async()=>({checks:[ok(7),ok(3)]}))).map(c=>c.id),[3,7]);
+let calls=[];
+await completeAudit(pairs,async p=>{calls.push(p.map(x=>x.id));return {checks:calls.length===1?[ok(3)]:[ok(7)]}});
+assert.deepEqual(calls,[[3,7],[7]]);
+let n=0;await completeAudit(pairs,async p=>{if(!n++)throw new SyntaxError('truncated');return {checks:p.map(x=>ok(x.id))}});
+await assert.rejects(completeAudit(pairs,async()=>({checks:[]})),/自动补查/);
+await assert.rejects(completeAudit(pairs,async()=>({checks:[{...ok(3),missing:'invented'},ok(7)]})),/自动补查/);
+await assert.rejects(completeAudit(pairs,async()=>{throw Error('401')}),/401/);
+console.log('Audit recovery: all checks passed');
