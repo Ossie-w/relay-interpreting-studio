@@ -23,7 +23,7 @@ try{
    if(failure==='401')return r.fulfill({status:401,body:'Invalid'});
    if(failure==='network')return r.abort('failed');
    const payload=r.request().postDataJSON();
-   if(payload.messages[0].content.includes('Independently audit'))return r.fulfill({json:{choices:[{message:{content:JSON.stringify({checks:JSON.parse(payload.messages[1].content).pairs.map(p=>({id:p.id,missing:'',expression:'',note:''}))})}}]}});
+   if(payload.messages[0].content.includes('Independently audit'))return r.fulfill({json:{choices:[{message:{content:JSON.stringify({checks:JSON.parse(payload.messages[1].content).pairs.map(p=>({id:p.id,missingIds:[],expressionIds:[],note:''}))})}}]}});
    const extract=r.request().postDataJSON().messages[0].content.includes('Extract the distinct');
    if(extract)extractions++;
    const value=extract?{units:['Transit update']}:{rows:JSON.parse(r.request().postDataJSON().messages[1].content).units.map((_,i)=>({unit:i+1,coverage:2,accuracy:2,vocabulary:2,evidence:[1],quote:"这座城市明年将增加公交车。",reason:"Faithful"})),weakness:'Practise numbers',strength:'Clear facts',suggestion:'Repeat the figures',reference:'交通简报',bank:Array.from({length:5},(_,i)=>({source:'Source '+i,target:'Target '+i}))};

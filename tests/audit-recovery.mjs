@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {completeAudit} from '../dist/assessment-audit.js';
+import {completeAudit,parts} from '../dist/assessment-audit.js';
 const pairs=[{id:3,source:'specific source',learner:'specific target'},{id:7,source:'other source',learner:'other target'}];
 const ok=id=>({id,missing:'',expression:''});
 assert.deepEqual((await completeAudit(pairs,async()=>({checks:[ok(7),ok(3)]}))).map(c=>c.id),[3,7]);
@@ -23,7 +23,7 @@ await completeAudit([pairs[0]],async (p,feedback)=>{
 });
 const {readFile}=await import('node:fs/promises');
 const code=(await readFile(new URL('../dist/assessment.js',import.meta.url),'utf8')).replace(/^import .*;\r?\n/gm,'');
-const {grade}=await import('data:text/javascript,'+encodeURIComponent('const completeAudit='+completeAudit.toString()+';const exactQuote='+ (await import('../dist/assessment-audit.js')).exactQuote.toString()+';'+code));
+const {grade}=await import('data:text/javascript,'+encodeURIComponent('const parts='+parts.toString()+';const completeAudit='+completeAudit.toString()+';const exactQuote='+ (await import('../dist/assessment-audit.js')).exactQuote.toString()+';'+code));
 const long='这是保留完整证据的长句'.repeat(30)+'。';
 let seen='';
 await grade(async (kind,body)=>{
@@ -33,3 +33,11 @@ await grade(async (kind,body)=>{
 },{dir:'en',source:'Source.'},long,['Source.']);
 assert.equal(seen,long);
 console.log('Long evidence, normalized quotes and repair feedback passed');
+
+const indexed=await completeAudit([{id:12,source:'Pilot programmes, not permanent policy.',learner:'这些课程，不是政策。'}],async p=>{
+ assert.ok(p[0].sourceParts.length===2);
+ return {checks:[{id:12,missingIds:[1],expressionIds:[],note:'遗漏试点性质'}]};
+});
+assert.equal(indexed[0].missing,'Pilot programmes,');
+await assert.rejects(completeAudit([pairs[0]],async()=>({checks:[{id:3,missingIds:[999],expressionIds:[],note:'越界'}]})),/自动补查/);
+console.log('Indexed audit rejects invalid IDs and resolves valid evidence');
