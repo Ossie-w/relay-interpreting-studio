@@ -2,6 +2,10 @@
 
 更新日期：2026-11-29（Asia/Shanghai）。每次开发收尾更新本文件。
 
+## 最新发布状态
+- 2026-11-29 用户明确要求发布；Sites 已成功部署 `bb7e267132791b81dca2cbb97f03d7de7c41c51d`。GitHub main 已同步。Netlify 未更新。
+- 当前分支 main；本条覆盖下方此前“未发布”的历史状态。发布前 Chrome 模拟测试通过，未进行真实 DeepSeek 质量验证。
+
 ## 最新开发进展
 - `105d017` 修正视频对话旧提示；文稿、译文、笔记、确认稿与对话自动保存在当前浏览器 `relay-video-draft-v1`，刷新恢复，不存 API Key 或录音文件。
 - `node tests/video-conversation.mjs` 通过；`tests/video-draft.mjs` 在 Chrome 使用模拟 AI 响应通过改译更新、刷新恢复和密钥不落盘验证。未测试真实模型质量。
