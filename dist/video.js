@@ -10,6 +10,17 @@ import {storeAttemptAudio} from './attempt-audio.js';
 const el=id=>document.getElementById(id);
 let speech,take,lastReport;
 let discussion=[];
+function renderPairs(){
+ el('pairs').replaceChildren(...speech.pairs.map(pair=>{const li=document.createElement('li'),p=document.createElement('p');const source=document.createElement('div');source.className='pairSource';source.textContent=pair.source;if(Number.isFinite(pair.start)){const time=document.createElement('small');time.textContent='字幕时间 '+new Date(pair.start*1000).toISOString().slice(11,19)+' – '+new Date(pair.end*1000).toISOString().slice(11,19);source.append(document.createElement('br'),time)}p.textContent=pair.translation;li.append(source,p);return li}));
+}
+function renderDiscussion(){
+ el('videoChat').replaceChildren(...discussion.map(turn=>{const article=document.createElement('article'),h=document.createElement('h3'),p=document.createElement('p');h.textContent=turn.question;p.textContent=turn.answer;p.style.whiteSpace='pre-wrap';article.append(h,p);return article}));
+}
+function saveDraft(){
+ if(!speech)return;
+ try{localStorage.setItem('relay-video-draft-v1',JSON.stringify({speech,discussion,notes:el('notes').value,confirmed:el('confirmed').value,captions:el('captions').value,youtubeLink:el('youtubeLink').value}));return true}
+ catch{el('chatStatus').textContent='浏览器存储空间不足，当前修改尚未自动保存，请先导出文稿。';return false}
+}
 const flags=new Set();
 function lock(name,on){
  if(on)flags.add(name);else flags.delete(name);
@@ -20,8 +31,8 @@ setupVideo(()=>({dir:el('videoDir').value,model:el('videoModel').value}),async m
  speech={...material,id:crypto.randomUUID()};take=null;el('take').value='';el('notes').value='';el('confirmed').value='';el('feedback').textContent='';el('results').hidden=true;
  discussion=[];el('videoChat').replaceChildren();el('chatStatus').textContent='';
  lastReport=null;el('vocabText').textContent='';el('wordStatus').textContent='';
- el('pairs').replaceChildren(...speech.pairs.map(pair=>{const li=document.createElement('li'),p=document.createElement('p');const source=document.createElement('div');source.className='pairSource';source.textContent=pair.source;if(Number.isFinite(pair.start)){const time=document.createElement('small');time.textContent='字幕时间 '+new Date(pair.start*1000).toISOString().slice(11,19)+' – '+new Date(pair.end*1000).toISOString().slice(11,19);source.append(document.createElement('br'),time)}p.textContent=pair.translation;li.append(source,p);return li}));
- el('work').hidden=false;el('work').scrollIntoView({behavior:'instant'});return true;
+ renderPairs();
+ saveDraft();el('work').hidden=false;el('work').scrollIntoView({behavior:'instant'});return true;
 });
 el('take').onchange=()=>{take=el('take').files[0];el('confirmed').value='';speech.original='';speech.id=crypto.randomUUID();el('results').hidden=true;el('feedback').textContent=''};
 el('recognize').onclick=async()=>{
@@ -110,13 +121,28 @@ el('askVideo').onclick=async()=>{
    speech.reference=result.pairs.map(p=>p.translation).join('\n\n');
    [...el('pairs').children].forEach((li,i)=>{li.querySelector('p').textContent=result.pairs[i].translation});
   }
+  if(result.pairs)result.answer='已按你的要求更新 '+result.changed+' 段译文，请查看上方双语对照。\n'+result.answer;
   discussion.push({question,answer:result.answer});
   const article=document.createElement('article'),heading=document.createElement('h3'),answer=document.createElement('p');
   heading.textContent=question;answer.textContent=result.answer;answer.style.whiteSpace='pre-wrap';article.append(heading,answer);el('videoChat').append(article);
   el('videoQuestion').value='';el('chatStatus').textContent=result.pairs?'已更新 '+result.changed+' 段译文；双语对照和 Word 导出已使用新版。':'回答完成。';
+   saveDraft();
  }catch(e){el('chatStatus').textContent=e.message}finally{button.disabled=false;lock('chat',false)}
 };
 
 el('captionSource').onchange=()=>{el('subtitleImport').hidden=el('captionSource').value!=='file'};
 el('subtitleFile').onchange=async()=>{const file=el('subtitleFile').files[0];if(!file)return;try{if(file.size>2*1024*1024)throw Error('请选择 2MB 以内的字幕或文稿。');const raw=await file.text();const cues=parseSubtitles(raw);if(!cues.length&&!/\.txt$/i.test(file.name))throw Error('未找到有效字幕时间码。');el('captions').value=raw;el('subtitleStatus').textContent=cues.length?'已导入 '+cues.length+' 条字幕；时间戳将用于 AI 分段。':'已导入纯文稿。';}catch(e){el('subtitleStatus').textContent=e.message}finally{el('subtitleFile').value=''}};
 el('exportTxt').onclick=()=>{try{const raw=el('captions').value,cues=parseSubtitles(raw),text=cues.length?subtitleText(cues):raw.trim();if(!text)throw Error('请先导入或粘贴文稿。');const url=URL.createObjectURL(new Blob(['\uFEFF'+text],{type:'text/plain;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download='Relay-原文稿.txt';a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);el('subtitleStatus').textContent='TXT 已导出；原字幕及时间戳仍保留在输入框中。';}catch(e){el('subtitleStatus').textContent=e.message}};
+
+for(const id of ['notes','confirmed'])el(id).addEventListener('input',saveDraft);
+try{
+ const draft=JSON.parse(localStorage.getItem('relay-video-draft-v1')||'null');
+ if(draft?.speech?.pairs?.length&&draft.speech.pairs.every(p=>typeof p.source==='string'&&typeof p.translation==='string')){
+  speech=draft.speech;discussion=Array.isArray(draft.discussion)?draft.discussion:[];
+  for(const id of ['notes','confirmed','captions','youtubeLink'])el(id).value=draft[id]||'';
+  el('videoDir').value=speech.dir;el('videoModel').value=speech.model;
+  renderPairs();renderDiscussion();el('work').hidden=false;
+  el('chatStatus').textContent='已恢复上次文稿与对话，可继续提出修改要求。';
+  el('feedback').textContent='如需重新评级录音，请重新选择录音文件；已保存的练习可在历史记录打开。';
+ }
+}catch{el('chatStatus').textContent='未能恢复本地草稿，请重新导入文稿。'}
