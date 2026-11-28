@@ -13,6 +13,7 @@
 Short consecutive practice supports topic, duration, direction, voice and model selection. Video long consecutive practice lives at `#video` alongside studio, history and training plan. Users import transcripts (paste, SRT/VTT/TXT), translate and compare paragraphs, upload interpreting recordings, transcribe, review, save, assess and export Word. Voice-Pro is optional, locally installed at `D:/各种安装包/voice-pro`, local UI port 7870.
 
 ## Recent implementation
+- 2026-11-29 development only: `video.js` persists video draft and conversation to `relay-video-draft-v1` in localStorage, restores on reload; no API key or audio in this draft. Old misleading conversation copy replaced. `tests/video-draft.mjs` verifies browser reload with mocked AI. Not yet published.
 - `dist/subtitles.js`: subtitle parsing, timestamp-aware translation batches and TXT export.
 - `dist/video-conversation.js`: Q&A or direct translation revision, whole talk or selected paragraphs; atomic update after all batches succeed. Called from `dist/video.js`. Updated translations feed comparison and Word export.
 - `dist/assessment.js`: source/confirmed-transcript grading; accuracy 40, completeness 25, expression 15; local audio rhythm estimate up to 20. Original and confirmed transcripts and recordings save before scoring. No per-sentence audio replay in reports.
